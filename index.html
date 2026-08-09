@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isolamento de vídeo</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=menu,open_with" />
+</head>
+
+<body>
+    <div id="menuBox">
+        <div id="menu">
+
+        </div>
+        <div id="menuBtn">
+            <span class="material-symbols-outlined" style="user-select: none;">
+                menu
+            </span>
+        </div>
+    </div>
+
+
+    <div id="box">
+
+        <div id="areaLink">
+            <input type="text" id="linkDoVideo">
+            <input type="submit" id="buscarVideo" value="Buscar">
+        </div>
+
+        <div id="areaDeVideo">
+            <div id="player"></div>
+            <span class="material-symbols-outlined" id="resize">
+                open_with
+            </span>
+        </div>
+
+
+    </div>
+
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>
