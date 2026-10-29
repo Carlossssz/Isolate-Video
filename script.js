@@ -173,6 +173,14 @@ document.addEventListener("mousemove", () => {
     }, 2000);
 })
 
+document.addEventListener("dblclick", () => {
+    if(!document.fullscreenElement){
+        document.documentElement.requestFullscreen();
+    } else{
+        document.exitFullscreen();
+    }
+})
+
 window.addEventListener("resize", () => {
     areaDeVideo.style.width = "90vw";
     areaDeVideo.style.height = `${areaDeVideo.offsetWidth * 9 / 16}px`;
