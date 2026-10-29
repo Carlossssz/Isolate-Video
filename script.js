@@ -13,6 +13,10 @@ function goVideo() {
     buscarVideo.addEventListener("click", function () { //Função de clique no botão de buscar
         let linkDoVideo = document.getElementById("linkDoVideo").value;
 
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        }
+
         let fim = linkDoVideo.indexOf("&");
 
         idDoVideo = fim === -1
@@ -174,9 +178,9 @@ document.addEventListener("mousemove", () => {
 })
 
 document.addEventListener("dblclick", () => {
-    if(!document.fullscreenElement){
+    if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen();
-    } else{
+    } else {
         document.exitFullscreen();
     }
 })
