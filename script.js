@@ -189,6 +189,7 @@ function collectionButton(id, label, symbol) {
     if (id === collection) button.setAttribute("aria-current", "true");
     button.append(icon(symbol), element("span", "collection-label", label),
         element("span", "count", videosIn(id).length));
+    if (id === history) attachLibraryMenu(button, button, "history", id);
     button.addEventListener("click", () => {
         collection = id;
         if (collapsedPlaylists.delete(id)) {
@@ -278,7 +279,8 @@ function openLibraryMenu(kind, id, button, x, y) {
     hideTitleTooltip();
     libraryMenuTarget = { id, button };
     for (const item of libraryMenu.children) item.hidden = item.dataset.menuKind !== kind;
-    libraryMenu.setAttribute("aria-label", kind === "video" ? "Opções do vídeo" : "Opções da pasta");
+    const labels = { video: "Opções do vídeo", playlist: "Opções da pasta", history: "Opções do histórico" };
+    libraryMenu.setAttribute("aria-label", labels[kind]);
     libraryMenu.hidden = false;
     const left = Math.max(8, Math.min(x, document.documentElement.clientWidth - libraryMenu.offsetWidth - 8));
     const top = Math.max(8, Math.min(y, window.innerHeight - libraryMenu.offsetHeight - 8));
@@ -315,6 +317,18 @@ $("video-menu-manage").addEventListener("click", () => {
     const video = findVideo(libraryMenuTarget?.id);
     closeLibraryMenu();
     if (video) editVideo(video);
+});
+$("history-menu-clear").addEventListener("click", () => {
+    closeLibraryMenu();
+    openEditor({
+        title: "Limpar histórico?",
+        fields: [element("p", "", "Isso remove as entradas do histórico e mantém os vídeos salvos em playlists ou marcados como assistidos.")],
+        saveLabel: "Limpar histórico",
+        save() {
+            for (const video of state.videos) video.lastPlayed = 0;
+            state.videos = state.videos.filter(video => video.folderId || video.watched);
+        },
+    });
 });
 libraryMenu.addEventListener("keydown", event => {
     if (event.key === "Escape" || event.key === "Tab") {
