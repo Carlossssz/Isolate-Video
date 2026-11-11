@@ -370,7 +370,7 @@ function render() {
         const row = element("div", "playlist-row");
         const rowSymbol = unlockedPlaylists.has(item.id) ? "lock_open" : depth ? "folder_open" : "folder";
         const button = item.vault
-            ? action("lock", "Desbloquear playlist protegida", () => unlockPlaylistEditor(item))
+            ? action("lock", "Desbloquear " + item.name, () => unlockPlaylistEditor(item))
             : collectionButton(item.id, item.name, rowSymbol);
         if (item.vault) {
             button.className = "collection";
@@ -856,7 +856,6 @@ function savePreferences() {
     } catch { /* Preferences still apply to the current page. */ }
 }
 
-const lockedPlaylistName = "Playlist protegida";
 const vaultVersion = 1;
 const vaultEncoder = new TextEncoder();
 const vaultDecoder = new TextDecoder();
@@ -945,7 +944,7 @@ async function sealPlaylist(library, id, session, collapsed) {
     const vault = { version: vaultVersion, salt: toBase64(session.salt), iv: toBase64(iv), data: toBase64(new Uint8Array(encrypted)) };
     return {
         folders: library.folders.filter(folder => !ids.has(folder.id) || folder.id === id).map(folder =>
-            folder.id === id ? { id, parentId: folder.parentId ?? null, name: lockedPlaylistName, vault } : folder),
+            folder.id === id ? { id, parentId: folder.parentId ?? null, name: folder.name, vault } : folder),
         videos: library.videos.filter(video => !ids.has(video.folderId)),
     };
 }
@@ -1200,7 +1199,7 @@ function validLibrary(library) {
         if (typeof folder?.id !== "string" || !folder.id || [history, watched].includes(folder.id) ||
             parents.has(folder.id) || typeof folder.name !== "string" || !folder.name.trim()) return false;
         if (folder.vault !== undefined) {
-            if (!validVault(folder.vault) || folder.name !== lockedPlaylistName) return false;
+            if (!validVault(folder.vault)) return false;
             locked.add(folder.id);
         }
         parents.set(folder.id, folder.parentId ?? null);
