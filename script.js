@@ -409,7 +409,7 @@ function openEditor(config) {
     $("editor-error").hidden = true;
     $("delete-item").hidden = !config.remove;
     $("delete-item").textContent = config.removeLabel ?? "Excluir";
-    $("commit-edit").textContent = "Salvar";
+    $("commit-edit").textContent = config.saveLabel ?? "Salvar";
     editor.showModal();
     $("editor-fields").querySelector("input, select")?.focus();
 }
@@ -623,6 +623,10 @@ $("editor-form").addEventListener("submit", event => {
         return;
     }
     editor.close();
+    if (edit.afterSave) {
+        edit.afterSave();
+        return;
+    }
     playSound("confirm");
     persist();
     render();
@@ -675,11 +679,131 @@ try {
     }
 } catch { /* Use defaults when preferences are unavailable. */ }
 
+function preferenceSnapshot() {
+    return { ...preferences, collapsedPlaylists: [...collapsedPlaylists] };
+}
+
 function savePreferences() {
     try {
-        localStorage.setItem(preferencesKey, JSON.stringify({ ...preferences, collapsedPlaylists: [...collapsedPlaylists] }));
+        localStorage.setItem(preferencesKey, JSON.stringify(preferenceSnapshot()));
     } catch { /* Preferences still apply to the current page. */ }
 }
+
+const backupFormat = "isolate-backup";
+const backupVersion = 1;
+
+function setBackupStatus(message = "") {
+    const status = $("backup-status");
+    status.textContent = message;
+    status.hidden = !message;
+}
+
+function exportBackup() {
+    const payload = { format: backupFormat, version: backupVersion, library: state, preferences: preferenceSnapshot() };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const link = element("a");
+    link.href = url;
+    link.download = "isolate-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setBackupStatus("Backup exportado.");
+}
+
+function validBackup(payload) {
+    if (payload?.format !== backupFormat || payload.version !== backupVersion) return false;
+    const folders = payload.library?.folders;
+    const videos = payload.library?.videos;
+    const settings = payload.preferences;
+    if (!Array.isArray(folders) || !Array.isArray(videos) || !settings ||
+        !Object.entries(defaultPreferences).every(([key, value]) => typeof settings[key] === typeof value) ||
+        !validColor.test(settings.color) || !Number.isFinite(settings.libraryWidth) ||
+        ![...startRate.options].some(option => Number(option.value) === settings.rate) ||
+        !Array.isArray(settings.collapsedPlaylists) ||
+        !settings.collapsedPlaylists.every(id => typeof id === "string")) return false;
+
+    const parents = new Map();
+    for (const folder of folders) {
+        if (typeof folder?.id !== "string" || !folder.id || [history, watched].includes(folder.id) ||
+            parents.has(folder.id) || typeof folder.name !== "string" || !folder.name.trim()) return false;
+        parents.set(folder.id, folder.parentId ?? null);
+    }
+    const rooted = new Set();
+    for (const folder of folders) {
+        const path = new Set();
+        let id = folder.id;
+        while (id !== null && !rooted.has(id)) {
+            if (path.has(id) || !parents.has(id)) return false;
+            path.add(id);
+            id = parents.get(id);
+        }
+        for (const visited of path) rooted.add(visited);
+    }
+
+    const keys = new Set();
+    for (const video of videos) {
+        const source = typeof video?.url === "string" ? parseSource(video.url) : null;
+        if (!source || source.key !== video.key || source.type !== video.type || source.id !== video.id ||
+            keys.has(video.key) || typeof video.title !== "string" || typeof video.watched !== "boolean" ||
+            !Number.isFinite(video.lastPlayed) || !Number.isFinite(video.addedAt) ||
+            (video.folderId !== null && !parents.has(video.folderId)) ||
+            (video.customTitle !== undefined && typeof video.customTitle !== "boolean") ||
+            (video.playlistOrder !== undefined && (!Number.isSafeInteger(video.playlistOrder) || video.playlistOrder < 0))) return false;
+        keys.add(video.key);
+    }
+    return true;
+}
+
+function restoreBackup(payload) {
+    const previousLibrary = localStorage.getItem(storageKey);
+    localStorage.setItem(storageKey, JSON.stringify(payload.library));
+    try {
+        localStorage.setItem(preferencesKey, JSON.stringify(payload.preferences));
+    } catch (error) {
+        if (previousLibrary === null) localStorage.removeItem(storageKey);
+        else localStorage.setItem(storageKey, previousLibrary);
+        throw error;
+    }
+}
+
+$("export-backup").addEventListener("click", exportBackup);
+$("import-backup").addEventListener("click", () => $("backup-file").click());
+$("backup-file").addEventListener("change", async event => {
+    const input = event.currentTarget;
+    const file = input.files[0];
+    input.value = "";
+    if (!file) return;
+    setBackupStatus();
+
+    let payload;
+    try {
+        payload = JSON.parse(await file.text());
+    } catch {
+        setBackupStatus("Não foi possível ler o arquivo JSON.");
+        return;
+    }
+    if (!validBackup(payload)) {
+        setBackupStatus("Selecione um backup válido do Isolate.");
+        return;
+    }
+
+    const { folders, videos } = payload.library;
+    openEditor({
+        title: "Importar backup",
+        fields: [element("p", "", "Este backup contém " + folders.length + " playlists e " + videos.length +
+            " vídeos. A importação substitui a biblioteca e as configurações deste navegador.")],
+        saveLabel: "Importar",
+        save() {
+            try {
+                restoreBackup(payload);
+            } catch {
+                return "O navegador não conseguiu salvar o backup. Verifique o espaço de armazenamento do site.";
+            }
+        },
+        afterSave() { location.reload(); },
+    });
+});
 
 function rgbChannels(color) {
     return color.slice(1).match(/../g).map(channel => parseInt(channel, 16));

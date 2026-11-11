@@ -148,6 +148,11 @@ body { -webkit-user-select: none; user-select: none; }
 .setting { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 8px; border-bottom: 1px solid var(--line); }
 .setting select { padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); }
 .setting input[type="checkbox"] { accent-color: var(--accent); }
+.backup-settings { display: grid; gap: 9px; padding: 12px 8px; }
+.backup-settings h3 { font-size: 16px; }
+.backup-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.backup-actions .button { flex: 1 1 auto; }
+#backup-status { color: var(--muted); font-size: 14px; }
 #wake-player { display: none; position: absolute; inset: 0; z-index: 1; }
 body.focus-player { background: #000; }
 .focus-player main { padding: 0 12px; }
