@@ -265,43 +265,45 @@ function playlistSelect(emptyLabel, excludedId) {
 }
 
 const titleTooltip = $("video-title-tooltip");
-const playlistMenu = $("playlist-menu");
-let playlistMenuTarget;
+const libraryMenu = $("library-menu");
+let libraryMenuTarget;
 
-function closePlaylistMenu(restoreFocus = false) {
-    if (restoreFocus) playlistMenuTarget?.button.focus({ preventScroll: true });
-    playlistMenu.hidden = true;
-    playlistMenuTarget = null;
+function closeLibraryMenu(restoreFocus = false) {
+    if (restoreFocus) libraryMenuTarget?.button.focus({ preventScroll: true });
+    libraryMenu.hidden = true;
+    libraryMenuTarget = null;
 }
 
-function openPlaylistMenu(folder, button, x, y) {
+function openLibraryMenu(kind, id, button, x, y) {
     hideTitleTooltip();
-    playlistMenuTarget = { id: folder.id, button };
-    playlistMenu.hidden = false;
-    const left = Math.max(8, Math.min(x, document.documentElement.clientWidth - playlistMenu.offsetWidth - 8));
-    const top = Math.max(8, Math.min(y, window.innerHeight - playlistMenu.offsetHeight - 8));
-    Object.assign(playlistMenu.style, { left: left + "px", top: top + "px" });
-    playlistMenu.firstElementChild.focus({ preventScroll: true });
+    libraryMenuTarget = { id, button };
+    for (const item of libraryMenu.children) item.hidden = item.dataset.menuKind !== kind;
+    libraryMenu.setAttribute("aria-label", kind === "video" ? "Opções do vídeo" : "Opções da pasta");
+    libraryMenu.hidden = false;
+    const left = Math.max(8, Math.min(x, document.documentElement.clientWidth - libraryMenu.offsetWidth - 8));
+    const top = Math.max(8, Math.min(y, window.innerHeight - libraryMenu.offsetHeight - 8));
+    Object.assign(libraryMenu.style, { left: left + "px", top: top + "px" });
+    libraryMenu.querySelector("button:not([hidden])")?.focus({ preventScroll: true });
 }
 
-function attachPlaylistMenu(row, button, folder) {
+function attachLibraryMenu(row, button, kind, id) {
     row.addEventListener("contextmenu", event => {
         event.preventDefault();
         const anchor = button.getBoundingClientRect();
-        openPlaylistMenu(folder, button, event.clientX || anchor.left, event.clientY || anchor.bottom);
+        openLibraryMenu(kind, id, button, event.clientX || anchor.left, event.clientY || anchor.bottom);
     });
     button.setAttribute("aria-keyshortcuts", "Shift+F10");
     button.addEventListener("keydown", event => {
         if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
         event.preventDefault();
         const anchor = button.getBoundingClientRect();
-        openPlaylistMenu(folder, button, anchor.left, anchor.bottom);
+        openLibraryMenu(kind, id, button, anchor.left, anchor.bottom);
     });
 }
 
 function runPlaylistMenuAction(callback) {
-    const folder = state.folders.find(item => item.id === playlistMenuTarget?.id);
-    closePlaylistMenu();
+    const folder = state.folders.find(item => item.id === libraryMenuTarget?.id);
+    closeLibraryMenu();
     if (!folder) return;
     if (folder.vault) unlockPlaylistEditor(folder, callback);
     else callback(folder);
@@ -309,22 +311,28 @@ function runPlaylistMenuAction(callback) {
 
 $("playlist-menu-add").addEventListener("click", () => runPlaylistMenuAction(folder => editFolder(null, folder)));
 $("playlist-menu-settings").addEventListener("click", () => runPlaylistMenuAction(editFolder));
-playlistMenu.addEventListener("keydown", event => {
+$("video-menu-manage").addEventListener("click", () => {
+    const video = findVideo(libraryMenuTarget?.id);
+    closeLibraryMenu();
+    if (video) editVideo(video);
+});
+libraryMenu.addEventListener("keydown", event => {
     if (event.key === "Escape" || event.key === "Tab") {
-        closePlaylistMenu(true);
+        closeLibraryMenu(true);
         if (event.key === "Escape") event.preventDefault();
     } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         event.preventDefault();
-        const next = document.activeElement === playlistMenu.firstElementChild ?
-            playlistMenu.lastElementChild : playlistMenu.firstElementChild;
-        next.focus();
+        const items = [...libraryMenu.querySelectorAll("button:not([hidden])")];
+        const direction = event.key === "ArrowUp" ? -1 : 1;
+        const index = (items.indexOf(document.activeElement) + direction + items.length) % items.length;
+        items[index]?.focus();
     }
 });
 document.addEventListener("pointerdown", event => {
-    if (!playlistMenu.hidden && !playlistMenu.contains(event.target)) closePlaylistMenu();
+    if (!libraryMenu.hidden && !libraryMenu.contains(event.target)) closeLibraryMenu();
 });
-window.addEventListener("resize", () => closePlaylistMenu());
-window.addEventListener("blur", () => closePlaylistMenu());
+window.addEventListener("resize", () => closeLibraryMenu());
+window.addEventListener("blur", () => closeLibraryMenu());
 
 function hideTitleTooltip() {
     titleTooltip.hidden = true;
@@ -377,7 +385,7 @@ function render() {
             button.append(element("span", "collection-label", item.name));
         }
         button.title = path;
-        attachPlaylistMenu(row, button, item);
+        attachLibraryMenu(row, button, "playlist", item.id);
         row.style.setProperty("--playlist-indent", Math.min(depth, 5) * 8 + "px");
         if (item.vault) {
             row.append(button);
@@ -451,7 +459,8 @@ function render() {
             removeVideo(video, collection);
             finishRemoval();
         });
-        row.append(play, watchControl, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)), remove);
+        attachLibraryMenu(row, play, "video", video.key);
+        row.append(play, watchControl, remove);
         if (folder) {
             const position = element("button", "entry-position-button", index + 1);
             position.type = "button";
@@ -807,7 +816,7 @@ $("new-folder").addEventListener("click", () => editFolder());
 const library = $("library");
 library.addEventListener("scroll", () => {
     hideTitleTooltip();
-    closePlaylistMenu();
+    closeLibraryMenu();
 }, { passive: true });
 window.addEventListener("resize", hideTitleTooltip);
 const libraryToggle = $("library-toggle");
@@ -1354,7 +1363,7 @@ renderPlaylistTray();
 function setLibraryOpen(open, focusControl = false) {
     if (!open) {
         hideTitleTooltip();
-        closePlaylistMenu();
+        closeLibraryMenu();
     }
     library.hidden = !open;
     const label = open ? "Fechar menu" : "Abrir menu";
@@ -1526,7 +1535,7 @@ function revealControls() {
     if (!isPlaying) return;
     idleTimer = setTimeout(() => {
         const focused = document.activeElement;
-        if (editor.open || !playlistMenu.hidden || focused === $("video-link") ||
+        if (editor.open || !libraryMenu.hidden || focused === $("video-link") ||
             (focused instanceof HTMLElement && focused.matches("button:focus-visible, select:focus-visible, input:focus-visible, [role=separator]:focus-visible")) ||
             shell.classList.contains("adjusting") || libraryDrag) return;
         document.body.classList.add("controls-idle");

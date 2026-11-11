@@ -42,9 +42,9 @@ h1, h2, h3, p { margin: 0; }
 .playlist-row { display: flex; align-items: center; gap: 2px; min-width: 0; padding-left: var(--playlist-indent, 0px); }
 .playlist-row > .playlist-toggle { height: 30px; }
 .playlist-toggle .icon { font-size: 18px; }
-.playlist-menu { position: fixed; z-index: 9; display: grid; gap: 2px; width: max-content; max-width: calc(100vw - 16px); padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 6px 18px #0008; }
-.playlist-menu button { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text); text-align: left; }
-.playlist-menu button:hover, .playlist-menu button:focus-visible { color: var(--accent); background: var(--panel); }
+.library-menu { position: fixed; z-index: 9; display: grid; gap: 2px; width: max-content; max-width: calc(100vw - 16px); padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 6px 18px #0008; }
+.library-menu button { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text); text-align: left; }
+.library-menu button:hover, .library-menu button:focus-visible { color: var(--accent); background: var(--panel); }
 .playlist-row > .playlist-toggle { flex: 0 0 22px; width: 22px; }
 #folders .collection { flex: 1; gap: 5px; padding-inline: 5px; }
 .collection-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -59,7 +59,6 @@ h1, h2, h3, p { margin: 0; }
 .list-empty { color: var(--muted); font-size: 14px; padding: 7px 8px; }
 #entries { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 185px), 1fr)); gap: 8px; }
 .entry { --card-accent: var(--accent); --card-accent-ink: var(--accent-ink); position: relative; width: 100%; max-width: 232px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
-.entry > .icon-button { position: absolute; top: 11px; right: 11px; width: 30px; height: 30px; background: #10131be8; color: var(--text); }
 .entry.is-watched {
     --card-accent: var(--watched-glow, var(--accent));
     --card-accent-ink: var(--watched-ink, var(--accent-ink));
@@ -187,7 +186,7 @@ body.focus-player { background: #000; }
 .entry-position-button:hover { color: var(--card-accent); border-color: var(--card-accent); }
 .entry-delete { display: none; z-index: 3; place-items: center; padding: 0; border: 0; border-radius: 5px; background: #080b12d9; color: var(--card-accent); }
 .entry-delete .icon { font-size: 58px; }
-.shift-delete-active .entry:has(.entry-preview:hover, .entry-watch:hover, .entry-delete:hover, > .icon-button:hover) .entry-delete { display: grid; }
+.shift-delete-active .entry:has(.entry-preview:hover, .entry-watch:hover, .entry-delete:hover) .entry-delete { display: grid; }
 .entry-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
 #video-title-tooltip { position: fixed; z-index: 10; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: #10131b; color: var(--text); box-shadow: 0 6px 18px #0008; overflow-wrap: anywhere; pointer-events: none; font-size: 14px; }

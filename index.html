@@ -10,8 +10,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
-    <link rel="stylesheet" href="style.css?v=position-footer">
-    <script src="script.js?v=position-footer" defer></script>
+    <link rel="stylesheet" href="style.css?v=video-context-menu">
+    <script src="script.js?v=video-context-menu" defer></script>
 </head>
 <body>
     <button id="library-toggle" class="icon-button" type="button" title="Abrir menu" aria-label="Abrir menu" aria-controls="library" aria-expanded="false"><span class="icon" aria-hidden="true">menu</span></button>
@@ -118,9 +118,10 @@
             </div>
         </div>
     </main>
-    <div id="playlist-menu" class="playlist-menu" role="menu" aria-label="Opções da pasta" hidden>
-        <button id="playlist-menu-add" type="button" role="menuitem"><span class="icon" aria-hidden="true">create_new_folder</span> Adicionar subpasta</button>
-        <button id="playlist-menu-settings" type="button" role="menuitem"><span class="icon" aria-hidden="true">settings</span> Configurações da pasta</button>
+    <div id="library-menu" class="library-menu" role="menu" aria-label="Opções da biblioteca" hidden>
+        <button id="playlist-menu-add" data-menu-kind="playlist" type="button" role="menuitem"><span class="icon" aria-hidden="true">create_new_folder</span> Adicionar subpasta</button>
+        <button id="playlist-menu-settings" data-menu-kind="playlist" type="button" role="menuitem"><span class="icon" aria-hidden="true">settings</span> Configurações da pasta</button>
+        <button id="video-menu-manage" data-menu-kind="video" type="button" role="menuitem"><span class="icon" aria-hidden="true">settings</span> Gerenciar vídeo</button>
     </div>
     <div id="video-title-tooltip" aria-hidden="true" hidden></div>
     <dialog id="editor" aria-labelledby="editor-title">
