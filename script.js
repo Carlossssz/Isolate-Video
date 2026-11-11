@@ -212,9 +212,9 @@ function render() {
     $("pip").disabled = !current;
 }
 
-function setWatched(source, value) {
+function setWatched(source, value, feedback = true) {
     const video = ensureVideo(source);
-    if (value && !video.watched) playSound("complete");
+    if (feedback && value && !video.watched) playSound("complete");
     video.watched = value;
     persist();
     render();
@@ -513,6 +513,9 @@ const soundPatterns = {
     confirm: [392, 523, 784],
     close: [440, 330],
     complete: [523, 659, 784, 1047],
+    playbackStart: [392, 523, 659, [784, 0.16]],
+    playbackPause: [659, [392, 0.09]],
+    playbackVictory: [523, 523, 523, 659, 784, 659, 784, [1047, 0.32]],
 };
 let audioContext;
 const lastResizeSound = new Map();
@@ -524,26 +527,32 @@ function playResizeSound(name) {
     playSound(name);
 }
 
+async function unlockSound() {
+    if (!preferences.sound || !window.AudioContext) return;
+    audioContext ??= new AudioContext();
+    if (audioContext.state === "suspended") await audioContext.resume();
+}
+
 async function playSound(name) {
     if (!preferences.sound || !window.AudioContext) return;
     try {
-        audioContext ??= new AudioContext();
-        if (audioContext.state === "suspended") await audioContext.resume();
+        await unlockSound();
         if (!preferences.sound || audioContext.state !== "running") return;
-        const start = audioContext.currentTime;
-        soundPatterns[name].forEach((frequency, index) => {
-            const time = start + index * 0.065;
+        let time = audioContext.currentTime;
+        for (const pitch of soundPatterns[name]) {
+            const [frequency, duration] = Array.isArray(pitch) ? pitch : [pitch, 0.065];
             const note = audioContext.createOscillator();
             const envelope = audioContext.createGain();
             note.type = "square";
             note.frequency.value = frequency;
             envelope.gain.setValueAtTime(0.001, time);
             envelope.gain.exponentialRampToValueAtTime(0.025, time + 0.008);
-            envelope.gain.exponentialRampToValueAtTime(0.001, time + 0.06);
+            envelope.gain.exponentialRampToValueAtTime(0.001, time + duration - 0.005);
             note.connect(envelope).connect(audioContext.destination);
             note.start(time);
-            note.stop(time + 0.065);
-        });
+            note.stop(time + duration);
+            time += duration;
+        }
     } catch { /* Audio feedback is optional. */ }
 }
 
@@ -642,15 +651,32 @@ function stopPlayback() {
 
 function markPlaying(active) {
     if (playback !== active) return;
+    if (active.phase !== "playing") playSound("playbackStart");
+    active.phase = "playing";
     setPlaying(active.host === media);
     if (active.recorded) return;
     active.recorded = true;
     recordPlay(active.source);
 }
 
-async function mountPlayback(source, host, position = 0, autoplay = true, recorded = false, rate = preferences.rate) {
+function markPaused(active) {
+    if (playback !== active || active.phase !== "playing") return;
+    active.phase = "paused";
+    setPlaying(false);
+    playSound("playbackPause");
+}
+
+function markEnded(active) {
+    if (playback !== active || active.phase === "ended") return;
+    active.phase = "ended";
+    setPlaying(false);
+    setWatched(active.source, true, false);
+    playSound("playbackVictory");
+}
+
+async function mountPlayback(source, host, position = 0, autoplay = true, recorded = false, rate = preferences.rate, continuing = false) {
     stopPlayback();
-    const active = { source, host, recorded, position, autoplay, rate };
+    const active = { source, host, recorded, position, autoplay, rate, phase: continuing ? "playing" : "pending" };
     playback = active;
     const doc = host.ownerDocument;
 
@@ -669,13 +695,9 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
         }, { once: true });
         video.addEventListener("playing", () => markPlaying(active));
         video.addEventListener("pause", () => {
-            if (playback === active) setPlaying(false);
+            if (!video.ended) markPaused(active);
         });
-        video.addEventListener("ended", () => {
-            if (playback !== active) return;
-            setPlaying(false);
-            setWatched(source, true);
-        });
+        video.addEventListener("ended", () => markEnded(active));
         video.addEventListener("error", () => mediaError(
             "Não foi possível reproduzir. Use um link direto para um arquivo de vídeo compatível.", active));
         host.append(video);
@@ -721,10 +743,8 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
                 onStateChange(event) {
                     if (playback !== active) return;
                     if (event.data === YT.PlayerState.PLAYING) markPlaying(active);
-                    if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED) {
-                        setPlaying(false);
-                    }
-                    if (event.data === YT.PlayerState.ENDED) setWatched(source, true);
+                    if (event.data === YT.PlayerState.PAUSED) markPaused(active);
+                    if (event.data === YT.PlayerState.ENDED) markEnded(active);
                 },
                 onError(event) {
                     const message = event.data === 153 ?
@@ -740,6 +760,7 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
 }
 
 function loadVideo(source) {
+    unlockSound().catch(() => {});
     setLibraryOpen(false);
     $("video-link").blur();
     dockPlayer();
@@ -783,7 +804,8 @@ function playbackState() {
 
 function transferPlayback(host) {
     const { position, autoplay, recorded, rate } = playbackState();
-    mountPlayback(current, host, position, autoplay, recorded, rate);
+    const continuing = autoplay && playback?.phase === "playing";
+    mountPlayback(current, host, position, autoplay, recorded, rate, continuing);
 }
 
 $("pip").addEventListener("click", async () => {
