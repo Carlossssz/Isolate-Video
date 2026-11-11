@@ -140,10 +140,12 @@ function ensureVideo(source) {
 
 function videosIn(id) {
     if (id === history) return state.videos.filter(video => video.lastPlayed).sort((a, b) => b.lastPlayed - a.lastPlayed);
-    return state.videos.filter(video => video.folderId === id).sort((a, b) => {
-        const difference = (a.playlistOrder ?? Number.MAX_SAFE_INTEGER) - (b.playlistOrder ?? Number.MAX_SAFE_INTEGER);
-        return difference || b.addedAt - a.addedAt;
-    });
+    return state.videos.filter(video => video.folderId === id).sort(comparePlaylistOrder);
+}
+
+function comparePlaylistOrder(a, b) {
+    const difference = (a.playlistOrder ?? Number.MAX_SAFE_INTEGER) - (b.playlistOrder ?? Number.MAX_SAFE_INTEGER);
+    return difference || b.addedAt - a.addedAt;
 }
 
 function setPlaylistOrder(videos) {
@@ -1168,9 +1170,11 @@ function unlockPlaylistEditor(folder, onUnlocked) {
             roots[0].parentId = folder.parentId;
             if (folder.nameOverride) roots[0].name = folder.name;
             let videos = payload.videos;
-            if (folder.importedPlaylist) {
+            if (folder.importedPlaylist || folder.importedBackup) {
                 for (const item of payload.folders) {
-                    if (item.vault) item.importedPlaylist = true;
+                    if (!item.vault) continue;
+                    if (folder.importedPlaylist) item.importedPlaylist = true;
+                    else item.importedBackup = true;
                 }
                 videos = [];
                 for (const video of payload.videos) {
@@ -1180,7 +1184,8 @@ function unlockPlaylistEditor(folder, onUnlocked) {
                         ...video,
                         title: existing?.customTitle ? existing.title : video.title,
                         customTitle: Boolean(existing?.customTitle || video.customTitle),
-                        lastPlayed: existing?.lastPlayed ?? 0,
+                        lastPlayed: folder.importedPlaylist ? (existing?.lastPlayed ?? 0) :
+                            Math.max(existing?.lastPlayed ?? 0, video.lastPlayed),
                         watched: Boolean(existing?.watched || video.watched),
                     });
                 }
@@ -1210,17 +1215,13 @@ function setBackupStatus(message = "") {
     status.hidden = !message;
 }
 
-async function exportBackup() {
-    const settings = preferenceSnapshot();
-    let library;
-    try {
-        library = unlockedPlaylists.size ? await encryptedLibrarySnapshot() : state;
-    } catch {
-        setBackupStatus("Não foi possível preparar o backup.");
-        return;
-    }
-    downloadJson({ format: backupFormat, version: backupVersion, library, preferences: settings }, "isolate-backup.json");
-    setBackupStatus("Backup exportado.");
+function exportBackup() {
+    exportFormatEditor("Exportar tudo", "isolate-backup.json", async () => ({
+        format: backupFormat,
+        version: backupVersion,
+        preferences: preferenceSnapshot(),
+        library: unlockedPlaylists.size ? await encryptedLibrarySnapshot() : state,
+    }));
 }
 
 function downloadJson(payload, filename) {
@@ -1235,8 +1236,9 @@ function downloadJson(payload, filename) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function exportPlaylist(folder) {
-    try {
+function exportPlaylist(folder) {
+    const safeName = folder.name.replace(/[^\p{L}\p{N} _-]+/gu, "-").trim() || "playlist";
+    exportFormatEditor("Exportar playlist", "isolate-playlist-" + safeName + ".json", async () => {
         const ids = playlistIds(state, folder.id);
         const scope = structuredClone({
             folders: state.folders.filter(item => ids.has(item.id)).map(item =>
@@ -1249,15 +1251,102 @@ async function exportPlaylist(folder) {
         if (inherited && !sessions.has(folder.id)) sessions.set(folder.id, unlockedPlaylists.get(inherited));
         const library = await sealPlaylists(scope, sessions, collapsed);
         const visibleCollapsed = library.folders.filter(item => !item.vault && collapsed.has(item.id)).map(item => item.id);
-        const safeName = folder.name.replace(/[^\p{L}\p{N} _-]+/gu, "-").trim() || "playlist";
-        downloadJson({
-            format: playlistFormat, version: backupVersion, library, collapsed: visibleCollapsed,
-        }, "isolate-playlist-" + safeName + ".json");
-    } catch {
-        showStatus("Não foi possível exportar esta playlist.");
-    }
+        return { format: playlistFormat, version: backupVersion, library, collapsed: visibleCollapsed };
+    });
 }
 
+const maxShareLength = 100000;
+const maxShareBytes = 8 * 1024 * 1024;
+const sharePrefix = "#importar=";
+
+async function makeShareLink(payload) {
+    const json = JSON.stringify(payload);
+    const compressed = typeof CompressionStream === "function";
+    const blob = new Blob([json]);
+    if (blob.size > maxShareBytes) return "";
+    const stream = compressed ? blob.stream().pipeThrough(new CompressionStream("gzip")) : blob.stream();
+    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    const data = toBase64(bytes).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    if (data.length > maxShareLength) return "";
+    return "https://carlossssz.github.io/Isolate-Video/" + sharePrefix + (compressed ? "g." : "j.") + data;
+}
+
+async function readShareLink(fragment) {
+    const mode = fragment.slice(0, 2);
+    const data = fragment.slice(2);
+    if (!["g.", "j."].includes(mode) || data.length > maxShareLength || !/^[A-Za-z0-9_-]+$/.test(data)) {
+        throw new Error("Link inválido.");
+    }
+    const bytes = fromBase64(data.replaceAll("-", "+").replaceAll("_", "/"));
+    let stream = new Blob([bytes]).stream();
+    if (mode === "g.") stream = stream.pipeThrough(new DecompressionStream("gzip"));
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let size = 0;
+    let json = "";
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxShareBytes) {
+            await reader.cancel();
+            throw new Error("Link grande demais.");
+        }
+        json += decoder.decode(value, { stream: true });
+    }
+    return JSON.parse(json + decoder.decode());
+}
+
+function shareLinkEditor(link) {
+    const input = textInput(link, link.length);
+    input.readOnly = true;
+    input.classList.add("editable-link");
+    openEditor({
+        title: "Link de importação",
+        fields: [field("Link para compartilhar", input)],
+        saveLabel: "Copiar link",
+        async save() {
+            try {
+                await navigator.clipboard.writeText(link);
+            } catch {
+                input.focus();
+                input.select();
+                return "O navegador não permitiu copiar automaticamente. Copie o link selecionado.";
+            }
+        },
+        afterSave() { showStatus("Link copiado."); },
+    });
+    input.select();
+}
+
+function exportFormatEditor(title, filename, makePayload) {
+    const format = element("select");
+    format.add(new Option("Salvar como JSON", "json"));
+    format.add(new Option("Gerar link", "link"));
+    let link = "";
+    openEditor({
+        title,
+        fields: [field("Formato da exportação", format)],
+        saveLabel: "Exportar",
+        async save() {
+            try {
+                const payload = await makePayload();
+                if (format.value === "json") {
+                    downloadJson(payload, filename);
+                } else {
+                    link = await makeShareLink(payload);
+                    if (!link) return "A exportação é grande demais para um link. Escolha Salvar como JSON.";
+                }
+            } catch {
+                return "Não foi possível preparar a exportação.";
+            }
+        },
+        afterSave() {
+            if (link) shareLinkEditor(link);
+            else setBackupStatus("Arquivo exportado.");
+        },
+    });
+}
 function validPlaylistBackup(payload) {
     if (payload?.format !== playlistFormat || payload.version !== backupVersion || !validLibrary(payload.library)) return false;
     const { folders, videos } = payload.library;
@@ -1422,6 +1511,95 @@ function validLibrary(library) {
     return true;
 }
 
+function mergeFullBackup(payload) {
+    const localFolders = new Map(state.folders.map(folder => [folder.id, folder]));
+    const occupied = new Set([...localFolders.keys(), ...payload.library.folders.map(folder => folder.id)]);
+    const mapping = new Map();
+    const reused = new Set();
+    const additions = [];
+    for (const folder of payload.library.folders) {
+        const existing = localFolders.get(folder.id);
+        if (folder.vault && existing) continue;
+        if (existing && !existing.vault && !protectedPlaylistAncestor(existing.id)) {
+            mapping.set(folder.id, existing.id);
+            reused.add(existing.id);
+            continue;
+        }
+        let id = folder.id;
+        if (existing) {
+            do { id = crypto.randomUUID?.() ?? String(Date.now() + Math.random()); } while (occupied.has(id));
+            occupied.add(id);
+        }
+        mapping.set(folder.id, id);
+        additions.push(folder);
+    }
+    const folders = [...state.folders, ...additions.map(folder => ({
+        ...folder,
+        id: mapping.get(folder.id),
+        parentId: mapping.get(folder.parentId) ?? null,
+        ...(folder.vault ? { importedBackup: true } : {}),
+    }))];
+    const videos = new Map(state.videos.map(video => [video.key, { ...video }]));
+    for (const video of payload.library.videos) {
+        const folderId = mapping.get(video.folderId) ?? null;
+        const existing = videos.get(video.key);
+        if (!existing) {
+            videos.set(video.key, { ...video, folderId });
+            continue;
+        }
+        const keepTitle = existing.customTitle || !video.customTitle;
+        videos.set(video.key, {
+            ...video, ...existing,
+            title: keepTitle ? existing.title : video.title,
+            customTitle: Boolean(existing.customTitle || video.customTitle),
+            folderId: existing.folderId ?? folderId,
+            playlistOrder: existing.folderId ? existing.playlistOrder : video.playlistOrder,
+            lastPlayed: Math.max(existing.lastPlayed, video.lastPlayed),
+            watched: existing.watched || video.watched,
+        });
+    }
+
+    for (const id of reused) {
+        const current = videosIn(id).map(video => videos.get(video.key));
+        const existingKeys = new Set(current.map(video => video.key));
+        const incoming = [...videos.values()].filter(video => video.folderId === id && !existingKeys.has(video.key));
+        setPlaylistOrder([...current, ...incoming.sort(comparePlaylistOrder)]);
+    }
+    const collapsed = new Set([...collapsedPlaylists, ...payload.preferences.collapsedPlaylists.map(id => mapping.get(id)).filter(Boolean)]);
+    return { library: { folders, videos: [...videos.values()] }, collapsed };
+}
+
+function fullBackupEditor(payload) {
+    const { folders, videos } = payload.library;
+    openEditor({
+        title: "Importar backup completo",
+        fields: [element("p", "", "Este backup contém " + folders.length + " playlists e " + videos.length +
+            " vídeos. As configurações deste navegador serão substituídas pelas do backup. Os vídeos e as pastas que você já tem serão mantidos.")],
+        saveLabel: "Importar backup",
+        async save() {
+            try {
+                for (;;) {
+                    const revision = libraryRevision;
+                    const merged = mergeFullBackup(payload);
+                    const library = await sealPlaylists(structuredClone(merged.library), new Map(unlockedPlaylists), merged.collapsed);
+                    if (revision !== libraryRevision) continue;
+                    const visibleIds = new Set(library.folders.filter(folder => !folder.vault).map(folder => folder.id));
+                    const settings = {
+                        ...payload.preferences,
+                        collapsedPlaylists: [...merged.collapsed].filter(id => visibleIds.has(id)),
+                    };
+                    restoreBackup({ library, preferences: settings });
+                    libraryRevision++;
+                    return;
+                }
+            } catch {
+                return "O navegador não conseguiu salvar o backup. Verifique o espaço de armazenamento do site.";
+            }
+        },
+        afterSave() { location.reload(); },
+    });
+}
+
 function restoreBackup(payload) {
     const previousLibrary = localStorage.getItem(storageKey);
     storeLibrary(payload.library);
@@ -1468,22 +1646,29 @@ $("backup-file").addEventListener("change", async event => {
         return;
     }
 
-    const { folders, videos } = payload.library;
-    openEditor({
-        title: "Importar backup",
-        fields: [element("p", "", "Este backup contém " + folders.length + " playlists e " + videos.length +
-            " vídeos. A importação substitui a biblioteca e as configurações deste navegador.")],
-        saveLabel: "Importar",
-        save() {
-            try {
-                restoreBackup(payload);
-            } catch {
-                return "O navegador não conseguiu salvar o backup. Verifique o espaço de armazenamento do site.";
-            }
-        },
-        afterSave() { libraryRevision++; location.reload(); },
-    });
+    fullBackupEditor(payload);
 });
+
+async function importFromShareLink() {
+    if (!location.hash.startsWith(sharePrefix)) return;
+    const encoded = location.hash.slice(sharePrefix.length);
+    window.history.replaceState(null, "", location.pathname + location.search);
+    if (editor.open) {
+        showStatus("Feche a janela atual e abra o link de importação novamente.");
+        return;
+    }
+    setLibraryOpen(true);
+    setLibraryTab(true);
+    setBackupStatus();
+    try {
+        const payload = await readShareLink(encoded);
+        if (validBackup(payload)) fullBackupEditor(payload);
+        else if (validPlaylistBackup(payload)) importPlaylistEditor(payload);
+        else setBackupStatus("Link de importação inválido ou incompleto.");
+    } catch {
+        setBackupStatus("Não foi possível abrir este link de importação.");
+    }
+}
 
 function rgbChannels(color) {
     return color.slice(1).match(/../g).map(channel => parseInt(channel, 16));
@@ -2171,3 +2356,5 @@ window.addEventListener("resize", () => {
     positionPlayer(rect.left, rect.top, rect.width, rect.height);
 });
 render();
+window.addEventListener("hashchange", importFromShareLink);
+importFromShareLink();
