@@ -311,6 +311,12 @@ function runPlaylistMenuAction(callback) {
 
 $("playlist-menu-add").addEventListener("click", () => runPlaylistMenuAction(folder => editFolder(null, folder)));
 $("playlist-menu-settings").addEventListener("click", () => runPlaylistMenuAction(editFolder));
+$("video-menu-new-tab").addEventListener("click", () => {
+    const video = findVideo(libraryMenuTarget?.id);
+    closeLibraryMenu();
+    const source = video && parseSource(video.url);
+    if (source) window.open(source.url, "_blank", "noopener,noreferrer");
+});
 $("video-menu-manage").addEventListener("click", () => {
     const video = findVideo(libraryMenuTarget?.id);
     closeLibraryMenu();
