@@ -836,13 +836,14 @@ window.addEventListener("resize", hideTitleTooltip);
 const libraryToggle = $("library-toggle");
 const libraryResize = $("library-resize");
 const themeColor = $("theme-color");
+const backgroundColor = $("background-color");
 const oppositeColors = $("opposite-colors");
 const retroSounds = $("retro-sounds");
 const shiftDelete = $("shift-delete");
 const startRate = $("start-rate");
 const playlistsToggle = $("playlists-toggle");
 const preferencesKey = "isolate.preferences.v1";
-const defaultPreferences = { color: "#ff525d", oppositeColors: false, shiftDelete: true, libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
+const defaultPreferences = { color: "#ff525d", background: "#0d0f15", oppositeColors: false, shiftDelete: true, libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
 const validColor = /^#[0-9a-f]{6}$/i;
 let preferences = { ...defaultPreferences };
 const collapsedPlaylists = new Set();
@@ -850,6 +851,7 @@ const collapsedPlaylists = new Set();
 try {
     const saved = JSON.parse(localStorage.getItem(preferencesKey));
     if (validColor.test(saved?.color)) preferences.color = saved.color;
+    if (validColor.test(saved?.background)) preferences.background = saved.background;
     if (saved?.oppositeColors === true) preferences.oppositeColors = true;
     if (saved?.shiftDelete === false) preferences.shiftDelete = false;
     if (Number.isFinite(saved?.libraryWidth)) preferences.libraryWidth = saved.libraryWidth;
@@ -1201,7 +1203,9 @@ function validBackup(payload) {
     if (payload?.format !== backupFormat || payload.version !== backupVersion) return false;
     const settings = payload.preferences;
     if (!settings ||
-        !Object.entries(defaultPreferences).every(([key, value]) => typeof settings[key] === typeof value) ||
+        !Object.entries(defaultPreferences).every(([key, value]) =>
+            (key === "background" && settings[key] === undefined) || typeof settings[key] === typeof value) ||
+        (settings.background !== undefined && !validColor.test(settings.background)) ||
         !validColor.test(settings.color) || !Number.isFinite(settings.libraryWidth) ||
         ![...startRate.options].some(option => Number(option.value) === settings.rate) ||
         !Array.isArray(settings.collapsedPlaylists) ||
@@ -1307,13 +1311,47 @@ function rgbChannels(color) {
     return color.slice(1).match(/../g).map(channel => parseInt(channel, 16));
 }
 
-function contrastingInk(color) {
+function relativeLuminance(color) {
     const [red, green, blue] = rgbChannels(color).map(value => {
         const channel = value / 255;
         return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
     });
-    const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-    return luminance > 0.179 ? "#000000" : "#ffffff";
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastingInk(color) {
+    return relativeLuminance(color) > 0.179 ? "#000000" : "#ffffff";
+}
+
+function hexColor(channels) {
+    return "#" + channels.map(channel => Math.round(channel).toString(16).padStart(2, "0")).join("");
+}
+
+function mixColors(first, second, amount) {
+    const target = rgbChannels(second);
+    return hexColor(rgbChannels(first).map((channel, index) => channel + (target[index] - channel) * amount));
+}
+
+function surfaceColor(color, offset) {
+    const channels = rgbChannels(color);
+    const midpoint = (Math.min(...channels) + Math.max(...channels)) / 2;
+    const lightness = midpoint / 255;
+    const next = Math.min(0.93, lightness) + offset;
+    if (lightness === next) return color;
+    const chroma = 1 - Math.abs(2 * lightness - 1);
+    const scale = chroma ? (1 - Math.abs(2 * next - 1)) / chroma : 0;
+    return hexColor(channels.map(channel => Math.min(255, Math.max(0, next * 255 + (channel - midpoint) * scale))));
+}
+
+function readableColor(preferred, background) {
+    const light = relativeLuminance(background);
+    const ink = contrastingInk(background);
+    for (let step = 0; step < 8; step++) {
+        const candidate = mixColors(preferred, ink, step / 8);
+        const value = relativeLuminance(candidate);
+        if ((Math.max(light, value) + 0.05) / (Math.min(light, value) + 0.05) >= 4.5) return candidate;
+    }
+    return ink;
 }
 
 function oppositeHue(color) {
@@ -1323,7 +1361,35 @@ function oppositeHue(color) {
     return "#" + channels.map(channel => (rangeSum - channel).toString(16).padStart(2, "0")).join("");
 }
 
-function applyTheme(color) {
+function surfaceTheme(background, accent, watchedColor) {
+    const page = surfaceColor(background, 0);
+    const panel = surfaceColor(background, 0.035);
+    const surface = surfaceColor(background, 0.065);
+    const pageInk = contrastingInk(page);
+    const panelInk = contrastingInk(panel);
+    const surfaceInk = contrastingInk(surface);
+    const hover = mixColors(surface, surfaceInk, 0.08);
+    return {
+        "background": page,
+        "page-text": pageInk,
+        "panel": panel,
+        "text": panelInk,
+        "surface": surface,
+        "surface-text": surfaceInk,
+        "surface-hover": hover,
+        "hover-text": contrastingInk(hover),
+        "line": mixColors(panel, panelInk, 0.19),
+        "muted": readableColor(mixColors(panelInk, panel, 0.25), panel),
+        "surface-muted": readableColor(mixColors(surfaceInk, surface, 0.25), surface),
+        "panel-accent-text": readableColor(accent, panel),
+        "surface-accent-text": readableColor(accent, surface),
+        "watched-text": readableColor(watchedColor, surface),
+        "selected-text": readableColor(accent, mixColors(panel, accent, 0.12)),
+        "error-text": readableColor(panelInk === "#000000" ? "#8f173a" : "#ffacb6", panel),
+    };
+}
+
+function applyTheme(color, background = backgroundColor.value) {
     const root = document.documentElement;
     const ink = contrastingInk(color);
     const watchedColor = preferences.oppositeColors ? oppositeHue(color) : color;
@@ -1333,11 +1399,21 @@ function applyTheme(color) {
     root.style.setProperty("--accent-ink", ink);
     root.style.setProperty("--accent-hover", ink === "#000000" ?
         "color-mix(in srgb, var(--accent) 80%, white)" : "color-mix(in srgb, var(--accent) 80%, black)");
+    const surfaces = surfaceTheme(background, color, watchedColor);
+    for (const [key, value] of Object.entries(surfaces)) root.style.setProperty("--" + key, value);
+    root.style.colorScheme = surfaces.text === "#000000" ? "light" : "dark";
     themeColor.value = color;
+    backgroundColor.value = background;
 }
 themeColor.addEventListener("input", () => applyTheme(themeColor.value));
 themeColor.addEventListener("change", () => {
     preferences.color = themeColor.value;
+    savePreferences();
+});
+backgroundColor.addEventListener("input", () => applyTheme(themeColor.value));
+backgroundColor.addEventListener("change", () => {
+    preferences.background = backgroundColor.value;
+    applyTheme(themeColor.value);
     savePreferences();
 });
 oppositeColors.checked = preferences.oppositeColors;
@@ -1346,7 +1422,7 @@ oppositeColors.addEventListener("change", () => {
     applyTheme(themeColor.value);
     savePreferences();
 });
-applyTheme(preferences.color);
+applyTheme(preferences.color, preferences.background);
 startRate.value = String(preferences.rate);
 startRate.addEventListener("change", () => {
     preferences.rate = Number(startRate.value);
