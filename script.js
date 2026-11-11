@@ -453,14 +453,12 @@ function render() {
         });
         row.append(play, watchControl, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)), remove);
         if (folder) {
-            const badge = element("span", "entry-position");
             const position = element("button", "entry-position-button", index + 1);
             position.type = "button";
             position.title = "Alterar posição na playlist";
             position.setAttribute("aria-label", "Alterar posição " + (index + 1) + " de " + video.title);
             position.addEventListener("click", () => editPlaylistPosition(video));
-            badge.append(position);
-            row.append(badge);
+            row.append(position);
         }
         return row;
     });
