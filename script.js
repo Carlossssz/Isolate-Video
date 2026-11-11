@@ -312,7 +312,23 @@ function render() {
         play.addEventListener("click", () => {
             loadVideo(video);
         });
-        row.append(play, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)));
+        const watchControl = element("label", "entry-watch");
+        const watchCheckbox = element("input");
+        watchCheckbox.type = "checkbox";
+        watchCheckbox.checked = Boolean(video.watched);
+        watchCheckbox.dataset.videoKey = video.key;
+        watchCheckbox.setAttribute("aria-label", "Assistido: " + video.title);
+        watchCheckbox.addEventListener("change", () => {
+            const restoreFocus = watchCheckbox.matches(":focus-visible");
+            setWatched(video, watchCheckbox.checked);
+            if (restoreFocus) {
+                const replacement = [...entriesPanel.querySelectorAll(".entry-watch input")]
+                    .find(input => input.dataset.videoKey === video.key);
+                (replacement ?? $("collections").querySelector('[aria-current="true"]'))?.focus();
+            }
+        });
+        watchControl.append(watchCheckbox);
+        row.append(play, watchControl, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)));
         return row;
     });
     entriesPanel.replaceChildren(...(entries.length || entriesPanel.hidden ? entries : [
@@ -439,9 +455,11 @@ function addVideoToPlaylist(folder) {
     link.classList.add("editable-link");
     link.inputMode = "url";
     link.autocomplete = "off";
+    const title = textInput("", 180);
+    title.required = false;
     openEditor({
         title: "Adicionar vídeo em " + folder.name,
-        fields: [field("Link ou ID do YouTube", link)],
+        fields: [field("Link ou ID do YouTube", link), field("Título personalizado (opcional)", title)],
         save() {
             const source = parseSource(link.value);
             if (!source) return "Insira um link direto de vídeo ou um link ou ID do YouTube.";
@@ -452,6 +470,11 @@ function addVideoToPlaylist(folder) {
             }
 
             const video = existing ?? ensureVideo(source);
+            const customTitle = title.value.trim();
+            if (customTitle) {
+                video.title = customTitle;
+                video.customTitle = true;
+            }
             video.folderId = folder.id;
             if (collapsedPlaylists.delete(folder.id)) savePreferences();
         },
@@ -756,7 +779,7 @@ retroSounds.addEventListener("change", () => {
 
 document.addEventListener("click", event => {
     const button = event.target.closest("button");
-    if (event.target.closest("#library-resize")) return;
+    if (event.target.closest("#library-resize, .entry-watch")) return;
     if (!button) {
         playSound("screenClick");
         return;

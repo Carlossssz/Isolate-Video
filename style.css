@@ -53,6 +53,14 @@ h1, h2, h3, p { margin: 0; }
     box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .entry.is-watched small { color: color-mix(in srgb, var(--accent) 70%, var(--text)); }
+.entry-watch { position: absolute; top: 11px; left: 11px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 5px; background: #10131bf2; opacity: 0; pointer-events: none; cursor: pointer; }
+.entry-watch input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.entry:has(.entry-preview:hover, .entry-watch:hover, .entry-watch:focus-within) .entry-watch { opacity: 1; pointer-events: auto; }
+.entry:has(.entry-preview:hover, .entry-watch:hover, .entry-watch:focus-within) .entry-preview .watched { visibility: hidden; }
+@media (hover: none) {
+    .entry-watch { opacity: 1; pointer-events: auto; }
+    .entry-preview .watched { visibility: hidden; }
+}
 .entry.current { border-color: color-mix(in srgb, var(--accent) 65%, var(--line)); }
 .entry-play { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; width: 100%; min-width: 0; text-align: left; border: 0; border-radius: inherit; background: transparent; color: var(--text); padding: 7px; }
 .entry-play:hover { color: var(--accent); }
