@@ -703,7 +703,7 @@ function exportBackup() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
     const link = element("a");
     link.href = url;
-    link.download = "isolate-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    link.download = "isolate-backup.json";
     document.body.append(link);
     link.click();
     link.remove();
