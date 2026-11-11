@@ -180,7 +180,43 @@ function playlistSelect(emptyLabel, excludedId) {
     return select;
 }
 
+const titleTooltip = $("video-title-tooltip");
+
+function hideTitleTooltip() {
+    titleTooltip.hidden = true;
+}
+
+function showTitleTooltip(title, x, y) {
+    if (titleTooltip.hidden || titleTooltip.textContent !== title) {
+        titleTooltip.textContent = title;
+        titleTooltip.hidden = false;
+    }
+    const margin = 8;
+    const width = titleTooltip.offsetWidth;
+    const height = titleTooltip.offsetHeight;
+    const left = Math.max(margin, Math.min(x - width / 2, document.documentElement.clientWidth - width - margin));
+    const above = y - height - 12;
+    const top = above >= margin ? above : Math.max(margin, Math.min(y + 14, window.innerHeight - height - margin));
+    Object.assign(titleTooltip.style, { left: left + "px", top: top + "px" });
+}
+
+function attachTitleTooltip(button, title) {
+    const followPointer = event => {
+        if (event.pointerType !== "touch") showTitleTooltip(title, event.clientX, event.clientY);
+    };
+    button.addEventListener("pointerenter", followPointer);
+    button.addEventListener("pointermove", followPointer);
+    button.addEventListener("pointerleave", hideTitleTooltip);
+    button.addEventListener("blur", hideTitleTooltip);
+    button.addEventListener("focus", () => {
+        if (!button.matches(":focus-visible")) return;
+        const rect = button.getBoundingClientRect();
+        showTitleTooltip(title, rect.left + rect.width / 2, rect.top);
+    });
+}
+
 function render() {
+    hideTitleTooltip();
     const folder = state.folders.find(item => item.id === collection);
     $("collections").replaceChildren(collectionButton(history, "Histórico", "history"),
         collectionButton(watched, "Assistidos", "check_circle"));
@@ -200,7 +236,7 @@ function render() {
         const play = element("button", "entry-play");
         play.type = "button";
         const title = element("span", "entry-title", video.title);
-        title.append(element("small", "", video.watched ? "Assistido" : video.type === "youtube" ? "YouTube" : "Vídeo direto"));
+        const status = element("small", "", video.watched ? "Assistido" : video.type === "youtube" ? "YouTube" : "Vídeo direto");
         const preview = element("span", "entry-preview");
         preview.append(icon(video.watched ? "check_circle" : "play_circle", video.watched ? "watched" : ""));
         if (video.type === "youtube") {
@@ -212,7 +248,8 @@ function render() {
             thumbnail.src = "https://i.ytimg.com/vi/" + encodeURIComponent(video.id) + "/mqdefault.jpg";
             preview.append(thumbnail);
         }
-        play.append(preview, title);
+        play.append(preview, title, status);
+        attachTitleTooltip(play, video.title);
         play.addEventListener("click", () => {
             loadVideo(video);
         });
@@ -251,6 +288,7 @@ function recordPlay(source) {
 }
 
 function openEditor(config) {
+    hideTitleTooltip();
     edit = config;
     $("editor-title").textContent = config.title;
     $("editor-fields").replaceChildren(...config.fields);
@@ -409,6 +447,8 @@ $("new-folder").addEventListener("click", () => editFolder());
 $("edit-folder").addEventListener("click", () => editFolder(state.folders.find(item => item.id === collection)));
 
 const library = $("library");
+library.addEventListener("scroll", hideTitleTooltip, { passive: true });
+window.addEventListener("resize", hideTitleTooltip);
 const libraryToggle = $("library-toggle");
 const libraryResize = $("library-resize");
 const themeColor = $("theme-color");
@@ -461,6 +501,7 @@ startRate.addEventListener("change", () => {
 });
 
 function setLibraryTab(settings) {
+    hideTitleTooltip();
     $("settings").hidden = !settings;
     $("library-videos").hidden = settings;
     $("settings-tab").setAttribute("aria-pressed", String(settings));
@@ -481,6 +522,7 @@ playlistsToggle.addEventListener("click", () => {
 renderPlaylistTray();
 
 function setLibraryOpen(open, focusControl = false) {
+    if (!open) hideTitleTooltip();
     library.hidden = !open;
     const label = open ? "Fechar menu" : "Abrir menu";
     libraryToggle.setAttribute("aria-expanded", String(open));
