@@ -3,7 +3,6 @@
 const $ = id => document.getElementById(id);
 const storageKey = "isolate.library.v1";
 const history = "history";
-const watched = "watched";
 const shell = $("player-shell");
 const media = $("media");
 const editor = $("editor");
@@ -141,7 +140,6 @@ function ensureVideo(source) {
 
 function videosIn(id) {
     if (id === history) return state.videos.filter(video => video.lastPlayed).sort((a, b) => b.lastPlayed - a.lastPlayed);
-    if (id === watched) return state.videos.filter(video => video.watched).sort((a, b) => b.lastPlayed - a.lastPlayed);
     return state.videos.filter(video => video.folderId === id).sort((a, b) => {
         const difference = (a.playlistOrder ?? Number.MAX_SAFE_INTEGER) - (b.playlistOrder ?? Number.MAX_SAFE_INTEGER);
         return difference || b.addedAt - a.addedAt;
@@ -197,7 +195,7 @@ function collectionButton(id, label, symbol) {
             if (protectedPlaylistAncestor(id)) persist();
         }
         render();
-        const container = id === history || id === watched ? $("collections") : $("folders");
+        const container = id === history ? $("collections") : $("folders");
         container.querySelector('[aria-current="true"]')?.focus();
     });
     return button;
@@ -245,7 +243,7 @@ function togglePlaylist(id) {
         collection = id;
     } else {
         collapsedPlaylists.add(id);
-        if (collection !== history && collection !== watched &&
+        if (collection !== history &&
             !playlistTree(undefined, true).some(item => item.folder.id === collection)) {
             collection = id;
         }
@@ -322,7 +320,7 @@ $("history-menu-clear").addEventListener("click", () => {
     closeLibraryMenu();
     openEditor({
         title: "Limpar histórico?",
-        fields: [element("p", "", "Isso remove as entradas do histórico e mantém os vídeos salvos em playlists ou marcados como assistidos.")],
+        fields: [element("p", "", "Isso remove as entradas do histórico. Os vídeos salvos em playlists continuam nelas.")],
         saveLabel: "Limpar histórico",
         save() {
             for (const video of state.videos) video.lastPlayed = 0;
@@ -386,8 +384,7 @@ function attachTitleTooltip(button, title) {
 function render() {
     hideTitleTooltip();
     const folder = state.folders.find(item => item.id === collection);
-    $("collections").replaceChildren(collectionButton(history, "Histórico", "history"),
-        collectionButton(watched, "Assistidos", "check_circle"));
+    $("collections").replaceChildren(collectionButton(history, "Histórico", "history"));
     $("folders").replaceChildren(...playlistTree(undefined, true).map(({ folder: item, path, depth }) => {
         const row = element("div", "playlist-row");
         const rowSymbol = unlockedPlaylists.has(item.id) ? "lock_open" : depth ? "folder_open" : "folder";
@@ -414,7 +411,7 @@ function render() {
         row.append(toggle, button);
         return row;
     }));
-    $("list-title").textContent = folder?.name ?? (collection === watched ? "Assistidos" : "Histórico");
+    $("list-title").textContent = folder?.name ?? "Histórico";
     $("add-playlist-video").hidden = !folder;
 
     const entriesPanel = $("entries");
@@ -486,8 +483,7 @@ function render() {
         return row;
     });
     entriesPanel.replaceChildren(...(entries.length || entriesPanel.hidden ? entries : [
-        element("p", "list-empty", folder ? "Nenhum vídeo nesta playlist." :
-            collection === watched ? "Nenhum vídeo marcado como assistido." : "Os vídeos reproduzidos aparecem aqui."),
+        element("p", "list-empty", folder ? "Nenhum vídeo nesta playlist." : "Os vídeos reproduzidos aparecem aqui."),
     ]));
 
     const video = current && findVideo(current.key);
@@ -1221,7 +1217,7 @@ function validLibrary(library) {
     const parents = new Map();
     const locked = new Set();
     for (const folder of folders) {
-        if (typeof folder?.id !== "string" || !folder.id || [history, watched].includes(folder.id) ||
+        if (typeof folder?.id !== "string" || !folder.id || [history, "watched"].includes(folder.id) ||
             parents.has(folder.id) || typeof folder.name !== "string" || !folder.name.trim()) return false;
         if (folder.vault !== undefined) {
             if (!validVault(folder.vault)) return false;
