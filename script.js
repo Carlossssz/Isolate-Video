@@ -608,21 +608,38 @@ function savePreferences() {
     } catch { /* Preferences still apply to the current page. */ }
 }
 
-function applyTheme(color) {
-    const channels = color.slice(1).match(/../g).map(channel => parseInt(channel, 16) / 255);
-    const [red, green, blue] = channels.map(channel =>
-        channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+function rgbChannels(color) {
+    return color.slice(1).match(/../g).map(channel => parseInt(channel, 16));
+}
+
+function contrastingInk(color) {
+    const [red, green, blue] = rgbChannels(color).map(value => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
     const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    return luminance > 0.179 ? "#000000" : "#ffffff";
+}
+
+function oppositeHue(color) {
+    const channels = rgbChannels(color);
+    // Reflecting RGB channels around the HSL lightness rotates the hue by 180°.
+    const rangeSum = Math.min(...channels) + Math.max(...channels);
+    return "#" + channels.map(channel => (rangeSum - channel).toString(16).padStart(2, "0")).join("");
+}
+
+function applyTheme(color) {
     const root = document.documentElement;
+    const ink = contrastingInk(color);
+    const watchedColor = preferences.oppositeColors ? oppositeHue(color) : color;
     root.style.setProperty("--accent", color);
-    const inverse = (0xffffff ^ parseInt(color.slice(1), 16)).toString(16).padStart(6, "0");
-    root.style.setProperty("--watched-glow", preferences.oppositeColors ? "#" + inverse : color);
-    root.style.setProperty("--accent-ink", luminance > 0.179 ? "#000000" : "#ffffff");
-    root.style.setProperty("--accent-hover", luminance > 0.179 ?
+    root.style.setProperty("--watched-glow", watchedColor);
+    root.style.setProperty("--watched-ink", contrastingInk(watchedColor));
+    root.style.setProperty("--accent-ink", ink);
+    root.style.setProperty("--accent-hover", ink === "#000000" ?
         "color-mix(in srgb, var(--accent) 80%, white)" : "color-mix(in srgb, var(--accent) 80%, black)");
     themeColor.value = color;
 }
-
 themeColor.addEventListener("input", () => applyTheme(themeColor.value));
 themeColor.addEventListener("change", () => {
     preferences.color = themeColor.value;
