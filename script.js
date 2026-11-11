@@ -1473,8 +1473,8 @@ function setLibraryOpen(open, focusControl = false) {
 libraryToggle.addEventListener("click", () => setLibraryOpen(library.hidden, true));
 $("library-close").addEventListener("click", () => setLibraryOpen(false, true));
 document.addEventListener("click", event => {
-    if (library.hidden || library.contains(event.target) || libraryToggle.contains(event.target) ||
-        libraryMenu.contains(event.target) || editor.contains(event.target)) return;
+    const path = event.composedPath();
+    if (library.hidden || [library, libraryToggle, libraryMenu, editor].some(node => path.includes(node))) return;
     setLibraryOpen(false);
 });
 library.addEventListener("keydown", event => {
