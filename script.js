@@ -833,13 +833,13 @@ const libraryToggle = $("library-toggle");
 const libraryResize = $("library-resize");
 const themeColor = $("theme-color");
 const backgroundColor = $("background-color");
-const oppositeColors = $("opposite-colors");
+const watchedColorInput = $("watched-color");
 const retroSounds = $("retro-sounds");
 const shiftDelete = $("shift-delete");
 const startRate = $("start-rate");
 const playlistsToggle = $("playlists-toggle");
 const preferencesKey = "isolate.preferences.v1";
-const defaultPreferences = { color: "#ff525d", background: "#0d0f15", oppositeColors: false, shiftDelete: true, libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
+const defaultPreferences = { color: "#ff525d", background: "#0d0f15", watchedColor: "", shiftDelete: true, libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
 const validColor = /^#[0-9a-f]{6}$/i;
 let preferences = { ...defaultPreferences };
 const collapsedPlaylists = new Set();
@@ -848,7 +848,10 @@ try {
     const saved = JSON.parse(localStorage.getItem(preferencesKey));
     if (validColor.test(saved?.color)) preferences.color = saved.color;
     if (validColor.test(saved?.background)) preferences.background = saved.background;
-    if (saved?.oppositeColors === true) preferences.oppositeColors = true;
+    if (validColor.test(saved?.watchedColor)) preferences.watchedColor = saved.watchedColor;
+    else if (saved?.watchedColor === undefined && saved?.oppositeColors === true) {
+        preferences.watchedColor = oppositeHue(preferences.color);
+    }
     if (saved?.shiftDelete === false) preferences.shiftDelete = false;
     if (Number.isFinite(saved?.libraryWidth)) preferences.libraryWidth = saved.libraryWidth;
     if (saved?.sound === true) preferences.sound = true;
@@ -1200,8 +1203,9 @@ function validBackup(payload) {
     const settings = payload.preferences;
     if (!settings ||
         !Object.entries(defaultPreferences).every(([key, value]) =>
-            (key === "background" && settings[key] === undefined) || typeof settings[key] === typeof value) ||
+            ((key === "background" || key === "watchedColor") && settings[key] === undefined) || typeof settings[key] === typeof value) ||
         (settings.background !== undefined && !validColor.test(settings.background)) ||
+        (settings.watchedColor && !validColor.test(settings.watchedColor)) ||
         !validColor.test(settings.color) || !Number.isFinite(settings.libraryWidth) ||
         ![...startRate.options].some(option => Number(option.value) === settings.rate) ||
         !Array.isArray(settings.collapsedPlaylists) ||
@@ -1385,10 +1389,9 @@ function surfaceTheme(background, accent, watchedColor) {
     };
 }
 
-function applyTheme(color, background = backgroundColor.value) {
+function applyTheme(color, background = backgroundColor.value, watchedColor = preferences.watchedColor || color) {
     const root = document.documentElement;
     const ink = contrastingInk(color);
-    const watchedColor = preferences.oppositeColors ? oppositeHue(color) : color;
     root.style.setProperty("--accent", color);
     root.style.setProperty("--watched-glow", watchedColor);
     root.style.setProperty("--watched-ink", contrastingInk(watchedColor));
@@ -1400,6 +1403,7 @@ function applyTheme(color, background = backgroundColor.value) {
     root.style.colorScheme = surfaces.text === "#000000" ? "light" : "dark";
     themeColor.value = color;
     backgroundColor.value = background;
+    watchedColorInput.value = watchedColor;
 }
 themeColor.addEventListener("input", () => applyTheme(themeColor.value));
 themeColor.addEventListener("change", () => {
@@ -1412,9 +1416,9 @@ backgroundColor.addEventListener("change", () => {
     applyTheme(themeColor.value);
     savePreferences();
 });
-oppositeColors.checked = preferences.oppositeColors;
-oppositeColors.addEventListener("change", () => {
-    preferences.oppositeColors = oppositeColors.checked;
+watchedColorInput.addEventListener("input", () => applyTheme(themeColor.value, backgroundColor.value, watchedColorInput.value));
+watchedColorInput.addEventListener("change", () => {
+    preferences.watchedColor = watchedColorInput.value;
     applyTheme(themeColor.value);
     savePreferences();
 });
