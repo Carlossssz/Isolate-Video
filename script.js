@@ -313,6 +313,7 @@ function runPlaylistMenuAction(callback) {
 
 $("playlist-menu-add").addEventListener("click", () => runPlaylistMenuAction(folder => editFolder(null, folder)));
 $("playlist-menu-settings").addEventListener("click", () => runPlaylistMenuAction(editFolder));
+$("playlist-menu-delete").addEventListener("click", () => runPlaylistMenuAction(deleteFolderEditor));
 $("playlist-menu-export").addEventListener("click", () => {
     const folder = state.folders.find(item => item.id === libraryMenuTarget?.id);
     closeLibraryMenu();
@@ -601,7 +602,6 @@ function editFolder(folder, parentFolder = null) {
             fields.push(removePassword);
         }
     }
-    const hasChildren = folder && state.folders.some(item => item.parentId === folder.id);
     openEditor({
         title: folder ? "Editar playlist" : parentFolder ? "Nova subpasta em " + parentFolder.name : "Nova playlist",
         fields,
@@ -624,7 +624,20 @@ function editFolder(folder, parentFolder = null) {
             }
             savePreferences();
         },
-        remove: folder && (() => {
+    });
+}
+
+function deleteFolderEditor(folder) {
+    const protectedFolder = unlockedPlaylists.has(folder.id);
+    const hasChildren = state.folders.some(item => item.parentId === folder.id);
+    const message = protectedFolder
+        ? "A pasta protegida, suas subpastas e seus vídeos serão excluídos."
+        : "A pasta será excluída." + (hasChildren ? " As subpastas sobem um nível." : "");
+    openEditor({
+        title: "Excluir “" + folder.name + "”?",
+        fields: [element("p", "", message)],
+        saveLabel: "Excluir pasta",
+        save() {
             if (unlockedPlaylists.has(folder.id)) {
                 const ids = playlistIds(state, folder.id);
                 discardPrivatePlayback(ids);
@@ -659,10 +672,7 @@ function editFolder(folder, parentFolder = null) {
             }
             state.videos = state.videos.filter(video => video.folderId || video.lastPlayed || video.watched);
             collection = parentId ?? history;
-        }),
-        confirm: folder && unlockedPlaylists.has(folder.id)
-            ? "Excluir esta playlist protegida, suas subpastas e seus vídeos?"
-            : "Excluir esta playlist?" + (hasChildren ? " As subpastas sobem um nível." : ""),
+        },
     });
 }
 
