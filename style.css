@@ -30,10 +30,11 @@ h1, h2, h3, p { margin: 0; }
 .collection { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; padding: 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); text-align: left; }
 .collection:hover, .icon-button:hover:not(:disabled) { color: var(--text); background: #232938; }
 .collection[aria-current="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); border-color: color-mix(in srgb, var(--accent) 33%, var(--line)); }
-.playlist-row { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.playlist-row { display: flex; align-items: center; gap: 2px; min-width: 0; padding-left: var(--playlist-indent, 0px); }
 .playlist-row > .icon-button { width: 28px; height: 30px; }
 .playlist-row > .icon-button .icon { font-size: 18px; }
-#folders .collection { flex: 1; padding-left: calc(9px + var(--playlist-indent, 0px)); }
+.playlist-row > .playlist-toggle, .playlist-toggle-spacer { flex: 0 0 22px; width: 22px; }
+#folders .collection { flex: 1; gap: 5px; padding-inline: 5px; }
 .collection-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .count { font: 11px "IBM Plex Mono", monospace; }
 .folder-heading, .list-heading { display: flex; justify-content: space-between; align-items: center; min-height: 36px; gap: 6px; padding-left: 8px; }

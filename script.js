@@ -163,7 +163,7 @@ function collectionButton(id, label, symbol) {
     return button;
 }
 
-function playlistTree(excludedId) {
+function playlistTree(excludedId, hideCollapsed = false) {
     const children = new Map();
     for (const folder of state.folders) {
         if (folder.id === excludedId) continue;
@@ -178,7 +178,7 @@ function playlistTree(excludedId) {
         const siblings = children.get(parentId) ?? [];
         for (let index = siblings.length - 1; index >= 0; index--) {
             const folder = siblings[index];
-            pending.push({ folder, depth, path: prefix + folder.name });
+            pending.push({ folder, depth, path: prefix + folder.name, hasChildren: children.has(folder.id) });
         }
     }
 
@@ -186,10 +186,34 @@ function playlistTree(excludedId) {
     while (pending.length) {
         const item = pending.pop();
         playlists.push(item);
-        queueChildren(item.folder.id, item.path + " / ", item.depth + 1);
+        if (!hideCollapsed || !collapsedPlaylists.has(item.folder.id)) {
+            queueChildren(item.folder.id, item.path + " / ", item.depth + 1);
+        }
     }
     return playlists;
 }
+function expandPlaylistPath(id) {
+    while (id) {
+        collapsedPlaylists.delete(id);
+        id = state.folders.find(folder => folder.id === id)?.parentId;
+    }
+}
+
+function togglePlaylist(id) {
+    if (collapsedPlaylists.has(id)) {
+        collapsedPlaylists.delete(id);
+    } else {
+        collapsedPlaylists.add(id);
+        if (collection !== history && collection !== watched &&
+            !playlistTree(undefined, true).some(item => item.folder.id === collection)) {
+            collection = id;
+        }
+    }
+    savePreferences();
+    render();
+    document.getElementById("playlist-toggle-" + id)?.focus();
+}
+
 function playlistSelect(emptyLabel, excludedId) {
     const select = element("select");
     select.add(new Option(emptyLabel, ""));
@@ -239,16 +263,28 @@ function render() {
     const folder = state.folders.find(item => item.id === collection);
     $("collections").replaceChildren(collectionButton(history, "Histórico", "history"),
         collectionButton(watched, "Assistidos", "check_circle"));
-    $("folders").replaceChildren(...playlistTree().map(({ folder: item, path, depth }) => {
+    $("folders").replaceChildren(...playlistTree(undefined, true).map(({ folder: item, path, depth, hasChildren }) => {
         const row = element("div", "playlist-row");
         const button = collectionButton(item.id, item.name, depth ? "folder_open" : "folder");
         button.title = path;
-        button.style.setProperty("--playlist-indent", Math.min(depth, 5) * 12 + "px");
-        row.append(button, action("add", "Criar subpasta em " + path, () => editFolder(null, item)));
+        row.style.setProperty("--playlist-indent", Math.min(depth, 5) * 8 + "px");
+        const expanded = !collapsedPlaylists.has(item.id);
+        if (hasChildren) {
+            const toggle = action(expanded ? "expand_more" : "chevron_right",
+                (expanded ? "Recolher " : "Expandir ") + path, () => togglePlaylist(item.id));
+            toggle.id = "playlist-toggle-" + item.id;
+            toggle.classList.add("playlist-toggle");
+            toggle.setAttribute("aria-expanded", String(expanded));
+            row.append(toggle);
+        } else {
+            row.append(element("span", "playlist-toggle-spacer"));
+        }
+        row.append(button,
+            action("add", "Criar subpasta em " + path, () => editFolder(null, item)),
+            action("more_vert", "Editar ou excluir " + path, () => editFolder(item)));
         return row;
     }));
     $("list-title").textContent = folder?.name ?? (collection === watched ? "Assistidos" : "Histórico");
-    $("edit-folder").hidden = !folder;
 
     const entries = videosIn(collection).map(video => {
         fetchYouTubeTitle(video);
@@ -359,6 +395,7 @@ function editFolder(folder, parentFolder = null) {
             if (hasPlaylistName(value, parentId, folder?.id)) {
                 return "Já existe uma playlist com esse nome neste nível.";
             }
+            expandPlaylistPath(parentId);
             if (folder) {
                 Object.assign(folder, { name: value, parentId });
             } else {
@@ -367,11 +404,13 @@ function editFolder(folder, parentFolder = null) {
                 collection = id;
                 preferences.playlistsCollapsed = false;
                 renderPlaylistTray();
-                savePreferences();
             }
+            savePreferences();
         },
         remove: folder && (() => {
             state.folders = state.folders.filter(item => item.id !== folder.id);
+            collapsedPlaylists.delete(folder.id);
+            savePreferences();
             const parentId = folder.parentId ?? null;
             for (const child of state.folders.filter(item => item.parentId === folder.id)) {
                 let name = child.name;
@@ -467,7 +506,6 @@ $("delete-item").addEventListener("click", () => {
 });
 $("cancel-edit").addEventListener("click", () => editor.close());
 $("new-folder").addEventListener("click", () => editFolder());
-$("edit-folder").addEventListener("click", () => editFolder(state.folders.find(item => item.id === collection)));
 
 const library = $("library");
 library.addEventListener("scroll", hideTitleTooltip, { passive: true });
@@ -482,6 +520,7 @@ const preferencesKey = "isolate.preferences.v1";
 const defaultPreferences = { color: "#ff525d", libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
 const validColor = /^#[0-9a-f]{6}$/i;
 let preferences = { ...defaultPreferences };
+const collapsedPlaylists = new Set();
 
 try {
     const saved = JSON.parse(localStorage.getItem(preferencesKey));
@@ -490,11 +529,16 @@ try {
     if (saved?.sound === true) preferences.sound = true;
     if ([...startRate.options].some(option => Number(option.value) === saved?.rate)) preferences.rate = saved.rate;
     if (saved?.playlistsCollapsed === true) preferences.playlistsCollapsed = true;
+    if (Array.isArray(saved?.collapsedPlaylists)) {
+        for (const id of saved.collapsedPlaylists) {
+            if (typeof id === "string") collapsedPlaylists.add(id);
+        }
+    }
 } catch { /* Use defaults when preferences are unavailable. */ }
 
 function savePreferences() {
     try {
-        localStorage.setItem(preferencesKey, JSON.stringify(preferences));
+        localStorage.setItem(preferencesKey, JSON.stringify({ ...preferences, collapsedPlaylists: [...collapsedPlaylists] }));
     } catch { /* Preferences still apply to the current page. */ }
 }
 
