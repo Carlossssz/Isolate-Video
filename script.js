@@ -1023,7 +1023,10 @@ function encryptedLibrarySnapshot() {
 
 function discardPrivatePlayback(ids) {
     const active = current && findVideo(current.key);
-    if (!active || !ids.has(active.folderId)) return;
+    if (active && ids.has(active.folderId)) clearPlayer();
+}
+
+function clearPlayer() {
     stopPlayback();
     if (floatingWindow) floatingWindow.close();
     if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
@@ -1153,11 +1156,11 @@ function removePlaylistPasswordEditor(folder) {
     });
 }
 
-function unlockPlaylistEditor(folder, onUnlocked) {
+function unlockPlaylistEditor(folder, onUnlocked, message) {
     const password = passwordField("Senha da playlist", "current-password");
     openEditor({
         title: "Desbloquear playlist",
-        fields: [password.field],
+        fields: message ? [element("p", "", message), password.field] : [password.field],
         saveLabel: "Desbloquear",
         afterRender: onUnlocked && (() => onUnlocked(state.folders.find(item => item.id === folder.id))),
         async save() {
@@ -1685,6 +1688,60 @@ async function importFromShareLink() {
         setBackupStatus("Não foi possível abrir este link de importação.");
     }
 }
+
+function deleteAllVideosEditor() {
+    const locked = state.folders.find(folder => folder.vault);
+    if (locked) {
+        unlockPlaylistEditor(locked, deleteAllVideosEditor,
+            "Desbloqueie “" + locked.name + "” para excluir seus vídeos e manter a playlist protegida.");
+        return;
+    }
+    openEditor({
+        title: "Excluir todos os vídeos?",
+        fields: [element("p", "", "Isso apaga os vídeos de todas as playlists e do histórico. As pastas, as senhas e as configurações serão mantidas.")],
+        saveLabel: "Excluir todos os vídeos",
+        alreadySaved: true,
+        async save() {
+            try {
+                for (;;) {
+                    const revision = libraryRevision;
+                    const library = { folders: structuredClone(state.folders), videos: [] };
+                    const stored = await sealPlaylists(library, new Map(unlockedPlaylists), new Set(collapsedPlaylists));
+                    if (revision !== libraryRevision) continue;
+                    storeLibrary(stored);
+                    libraryRevision++;
+                    clearPlayer();
+                    state.videos = [];
+                    requestedTitles.clear();
+                    return;
+                }
+            } catch {
+                return "Não foi possível salvar a exclusão dos vídeos.";
+            }
+        },
+    });
+}
+
+$("delete-all-videos").addEventListener("click", deleteAllVideosEditor);
+$("reset-site").addEventListener("click", () => {
+    openEditor({
+        title: "Resetar o site?",
+        fields: [element("p", "", "Isso apaga todas as playlists, subpastas, vídeos e o histórico deste navegador, incluindo as pastas protegidas. As configurações voltarão ao padrão.")],
+        saveLabel: "Resetar o site",
+        save() {
+            try {
+                restoreBackup({
+                    library: { folders: [], videos: [] },
+                    preferences: { ...defaultPreferences, collapsedPlaylists: [] },
+                });
+                libraryRevision++;
+            } catch {
+                return "Não foi possível resetar o site neste navegador.";
+            }
+        },
+        afterSave() { location.reload(); },
+    });
+});
 
 function rgbChannels(color) {
     return color.slice(1).match(/../g).map(channel => parseInt(channel, 16));
