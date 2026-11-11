@@ -289,7 +289,9 @@ function render() {
     const visibleVideos = entriesPanel.hidden ? [] : videosIn(collection);
     const entries = visibleVideos.map(video => {
         fetchYouTubeTitle(video);
-        const row = element("div", "entry" + (video.key === current?.key ? " current" : ""));
+        const row = element("div", "entry");
+        row.classList.toggle("current", video.key === current?.key);
+        row.classList.toggle("is-watched", video.watched);
         const play = element("button", "entry-play");
         play.type = "button";
         const title = element("span", "entry-title", video.title);
