@@ -868,7 +868,7 @@ const shiftDelete = $("shift-delete");
 const startRate = $("start-rate");
 const playlistsToggle = $("playlists-toggle");
 const preferencesKey = "isolate.preferences.v1";
-const defaultPreferences = { color: "#ff525d", background: "#0d0f15", watchedColor: "", shiftDelete: true, libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
+const defaultPreferences = { color: "#ff525d", background: "#0d0f15", watchedColor: "", shiftDelete: true, libraryWidth: 288, sound: true, rate: 1, playlistsCollapsed: false };
 const validColor = /^#[0-9a-f]{6}$/i;
 let preferences = { ...defaultPreferences };
 const collapsedPlaylists = new Set();
@@ -883,7 +883,7 @@ try {
     }
     if (saved?.shiftDelete === false) preferences.shiftDelete = false;
     if (Number.isFinite(saved?.libraryWidth)) preferences.libraryWidth = saved.libraryWidth;
-    if (saved?.sound === true) preferences.sound = true;
+    if (typeof saved?.sound === "boolean") preferences.sound = saved.sound;
     if ([...startRate.options].some(option => Number(option.value) === saved?.rate)) preferences.rate = saved.rate;
     if (saved?.playlistsCollapsed === true) preferences.playlistsCollapsed = true;
     if (Array.isArray(saved?.collapsedPlaylists)) {
