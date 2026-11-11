@@ -353,7 +353,7 @@ function openEditor(config) {
     $("editor-fields").replaceChildren(...config.fields);
     $("editor-error").hidden = true;
     $("delete-item").hidden = !config.remove;
-    $("delete-item").textContent = "Excluir";
+    $("delete-item").textContent = config.removeLabel ?? "Excluir";
     $("commit-edit").textContent = "Salvar";
     editor.showModal();
     $("editor-fields").querySelector("input, select")?.focus();
@@ -471,6 +471,7 @@ function editVideo(source) {
     const folder = playlistSelect("Nenhuma playlist");
     folder.value = video?.folderId ?? (state.folders.some(item => item.id === collection) ? collection : "");
     const inFolder = Boolean(video?.folderId && video.folderId === collection);
+    const inHistory = collection === history && Boolean(video?.lastPlayed);
     const check = element("input");
     check.type = "checkbox";
     check.checked = Boolean(video?.watched);
@@ -502,10 +503,16 @@ function editVideo(source) {
             }
         },
         remove: video && (() => {
+            if (inHistory) {
+                video.lastPlayed = 0;
+                if (video.folderId || video.watched) return;
+            }
             if (inFolder && (video.lastPlayed || video.watched)) video.folderId = null;
             else state.videos = state.videos.filter(item => item !== video);
         }),
-        confirm: inFolder ? "Remover este vídeo da playlist?" : "Excluir este vídeo da biblioteca?",
+        removeLabel: inHistory ? "Remover do histórico" : undefined,
+        confirm: inHistory ? "Remover este vídeo do histórico?" :
+            inFolder ? "Remover este vídeo da playlist?" : "Excluir este vídeo da biblioteca?",
     });
 }
 
