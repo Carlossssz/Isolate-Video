@@ -156,6 +156,7 @@ function collectionButton(id, label, symbol) {
         element("span", "count", videosIn(id).length));
     button.addEventListener("click", () => {
         collection = id;
+        if (collapsedPlaylists.delete(id)) savePreferences();
         render();
         const container = id === history || id === watched ? $("collections") : $("folders");
         container.querySelector('[aria-current="true"]')?.focus();
@@ -178,7 +179,7 @@ function playlistTree(excludedId, hideCollapsed = false) {
         const siblings = children.get(parentId) ?? [];
         for (let index = siblings.length - 1; index >= 0; index--) {
             const folder = siblings[index];
-            pending.push({ folder, depth, path: prefix + folder.name, hasChildren: children.has(folder.id) });
+            pending.push({ folder, depth, path: prefix + folder.name });
         }
     }
 
@@ -202,6 +203,7 @@ function expandPlaylistPath(id) {
 function togglePlaylist(id) {
     if (collapsedPlaylists.has(id)) {
         collapsedPlaylists.delete(id);
+        collection = id;
     } else {
         collapsedPlaylists.add(id);
         if (collection !== history && collection !== watched &&
@@ -263,30 +265,28 @@ function render() {
     const folder = state.folders.find(item => item.id === collection);
     $("collections").replaceChildren(collectionButton(history, "Histórico", "history"),
         collectionButton(watched, "Assistidos", "check_circle"));
-    $("folders").replaceChildren(...playlistTree(undefined, true).map(({ folder: item, path, depth, hasChildren }) => {
+    $("folders").replaceChildren(...playlistTree(undefined, true).map(({ folder: item, path, depth }) => {
         const row = element("div", "playlist-row");
         const button = collectionButton(item.id, item.name, depth ? "folder_open" : "folder");
         button.title = path;
         row.style.setProperty("--playlist-indent", Math.min(depth, 5) * 8 + "px");
         const expanded = !collapsedPlaylists.has(item.id);
-        if (hasChildren) {
-            const toggle = action(expanded ? "expand_more" : "chevron_right",
-                (expanded ? "Recolher " : "Expandir ") + path, () => togglePlaylist(item.id));
-            toggle.id = "playlist-toggle-" + item.id;
-            toggle.classList.add("playlist-toggle");
-            toggle.setAttribute("aria-expanded", String(expanded));
-            row.append(toggle);
-        } else {
-            row.append(element("span", "playlist-toggle-spacer"));
-        }
-        row.append(button,
+        const toggle = action(expanded ? "expand_more" : "chevron_right",
+            (expanded ? "Recolher " : "Expandir ") + path, () => togglePlaylist(item.id));
+        toggle.id = "playlist-toggle-" + item.id;
+        toggle.classList.add("playlist-toggle");
+        toggle.setAttribute("aria-expanded", String(expanded));
+        row.append(toggle, button,
             action("add", "Criar subpasta em " + path, () => editFolder(null, item)),
             action("more_vert", "Editar ou excluir " + path, () => editFolder(item)));
         return row;
     }));
     $("list-title").textContent = folder?.name ?? (collection === watched ? "Assistidos" : "Histórico");
 
-    const entries = videosIn(collection).map(video => {
+    const entriesPanel = $("entries");
+    entriesPanel.hidden = Boolean(folder && collapsedPlaylists.has(folder.id));
+    const visibleVideos = entriesPanel.hidden ? [] : videosIn(collection);
+    const entries = visibleVideos.map(video => {
         fetchYouTubeTitle(video);
         const row = element("div", "entry" + (video.key === current?.key ? " current" : ""));
         const play = element("button", "entry-play");
@@ -312,7 +312,7 @@ function render() {
         row.append(play, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)));
         return row;
     });
-    $("entries").replaceChildren(...(entries.length ? entries : [
+    entriesPanel.replaceChildren(...(entries.length || entriesPanel.hidden ? entries : [
         element("p", "list-empty", folder ? "Nenhum vídeo nesta playlist." :
             collection === watched ? "Nenhum vídeo marcado como assistido." : "Os vídeos reproduzidos aparecem aqui."),
     ]));

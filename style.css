@@ -33,7 +33,7 @@ h1, h2, h3, p { margin: 0; }
 .playlist-row { display: flex; align-items: center; gap: 2px; min-width: 0; padding-left: var(--playlist-indent, 0px); }
 .playlist-row > .icon-button { width: 28px; height: 30px; }
 .playlist-row > .icon-button .icon { font-size: 18px; }
-.playlist-row > .playlist-toggle, .playlist-toggle-spacer { flex: 0 0 22px; width: 22px; }
+.playlist-row > .playlist-toggle { flex: 0 0 22px; width: 22px; }
 #folders .collection { flex: 1; gap: 5px; padding-inline: 5px; }
 .collection-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .count { font: 11px "IBM Plex Mono", monospace; }
