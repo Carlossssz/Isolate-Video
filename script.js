@@ -265,6 +265,66 @@ function playlistSelect(emptyLabel, excludedId) {
 }
 
 const titleTooltip = $("video-title-tooltip");
+const playlistMenu = $("playlist-menu");
+let playlistMenuTarget;
+
+function closePlaylistMenu(restoreFocus = false) {
+    if (restoreFocus) playlistMenuTarget?.button.focus({ preventScroll: true });
+    playlistMenu.hidden = true;
+    playlistMenuTarget = null;
+}
+
+function openPlaylistMenu(folder, button, x, y) {
+    hideTitleTooltip();
+    playlistMenuTarget = { id: folder.id, button };
+    playlistMenu.hidden = false;
+    const left = Math.max(8, Math.min(x, document.documentElement.clientWidth - playlistMenu.offsetWidth - 8));
+    const top = Math.max(8, Math.min(y, window.innerHeight - playlistMenu.offsetHeight - 8));
+    Object.assign(playlistMenu.style, { left: left + "px", top: top + "px" });
+    playlistMenu.firstElementChild.focus({ preventScroll: true });
+}
+
+function attachPlaylistMenu(row, button, folder) {
+    row.addEventListener("contextmenu", event => {
+        event.preventDefault();
+        const anchor = button.getBoundingClientRect();
+        openPlaylistMenu(folder, button, event.clientX || anchor.left, event.clientY || anchor.bottom);
+    });
+    button.setAttribute("aria-keyshortcuts", "Shift+F10");
+    button.addEventListener("keydown", event => {
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+        event.preventDefault();
+        const anchor = button.getBoundingClientRect();
+        openPlaylistMenu(folder, button, anchor.left, anchor.bottom);
+    });
+}
+
+function runPlaylistMenuAction(callback) {
+    const folder = state.folders.find(item => item.id === playlistMenuTarget?.id);
+    closePlaylistMenu();
+    if (!folder) return;
+    if (folder.vault) unlockPlaylistEditor(folder, callback);
+    else callback(folder);
+}
+
+$("playlist-menu-add").addEventListener("click", () => runPlaylistMenuAction(folder => editFolder(null, folder)));
+$("playlist-menu-settings").addEventListener("click", () => runPlaylistMenuAction(editFolder));
+playlistMenu.addEventListener("keydown", event => {
+    if (event.key === "Escape" || event.key === "Tab") {
+        closePlaylistMenu(true);
+        if (event.key === "Escape") event.preventDefault();
+    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        const next = document.activeElement === playlistMenu.firstElementChild ?
+            playlistMenu.lastElementChild : playlistMenu.firstElementChild;
+        next.focus();
+    }
+});
+document.addEventListener("pointerdown", event => {
+    if (!playlistMenu.hidden && !playlistMenu.contains(event.target)) closePlaylistMenu();
+});
+window.addEventListener("resize", () => closePlaylistMenu());
+window.addEventListener("blur", () => closePlaylistMenu());
 
 function hideTitleTooltip() {
     titleTooltip.hidden = true;
@@ -317,6 +377,7 @@ function render() {
             button.append(element("span", "collection-label", item.name));
         }
         button.title = path;
+        attachPlaylistMenu(row, button, item);
         row.style.setProperty("--playlist-indent", Math.min(depth, 5) * 8 + "px");
         if (item.vault) {
             row.append(button);
@@ -328,9 +389,7 @@ function render() {
         toggle.id = "playlist-toggle-" + item.id;
         toggle.classList.add("playlist-toggle");
         toggle.setAttribute("aria-expanded", String(expanded));
-        row.append(toggle, button,
-            action("add", "Criar subpasta em " + path, () => editFolder(null, item)),
-            action("more_vert", "Editar ou excluir " + path, () => editFolder(item)));
+        row.append(toggle, button);
         return row;
     }));
     $("list-title").textContent = folder?.name ?? (collection === watched ? "Assistidos" : "Histórico");
@@ -486,6 +545,15 @@ function editFolder(folder, parentFolder = null) {
         protection.className = "button secondary";
         protection.append(document.createTextNode(unlocked ? "Bloquear agora" : "Proteger com senha"));
         fields.push(protection);
+        if (unlocked) {
+            const removePassword = action("key_off", "Remover senha", () => {
+                editor.close();
+                removePlaylistPasswordEditor(folder);
+            });
+            removePassword.className = "button secondary";
+            removePassword.append(document.createTextNode("Remover senha"));
+            fields.push(removePassword);
+        }
     }
     const hasChildren = folder && state.folders.some(item => item.parentId === folder.id);
     openEditor({
@@ -694,6 +762,7 @@ function finishEditorSave(config, error) {
     playSound("confirm");
     if (!config.alreadySaved) persist();
     render();
+    config.afterRender?.();
 }
 
 $("editor-form").addEventListener("submit", event => {
@@ -738,7 +807,10 @@ $("cancel-edit").addEventListener("click", () => editor.close());
 $("new-folder").addEventListener("click", () => editFolder());
 
 const library = $("library");
-library.addEventListener("scroll", hideTitleTooltip, { passive: true });
+library.addEventListener("scroll", () => {
+    hideTitleTooltip();
+    closePlaylistMenu();
+}, { passive: true });
 window.addEventListener("resize", hideTitleTooltip);
 const libraryToggle = $("library-toggle");
 const libraryResize = $("library-resize");
@@ -993,12 +1065,51 @@ function lockPlaylistEditor(folder) {
     });
 }
 
-function unlockPlaylistEditor(folder) {
+function removePlaylistPasswordEditor(folder) {
+    const password = passwordField("Senha atual da playlist", "current-password");
+    openEditor({
+        title: "Remover senha",
+        fields: [password.field, element("p", "", "Esta playlist deixará de exigir senha. Subpastas com senha própria continuam protegidas.")],
+        saveLabel: "Remover senha",
+        alreadySaved: true,
+        async save() {
+            const session = unlockedPlaylists.get(folder.id);
+            try {
+                const candidate = await playlistKey(password.input.value, session.salt);
+                const algorithm = vaultAlgorithm(folder.id, crypto.getRandomValues(new Uint8Array(12)));
+                const challenge = await crypto.subtle.encrypt(algorithm, session.key, new Uint8Array());
+                await crypto.subtle.decrypt(algorithm, candidate, challenge);
+            } catch {
+                return "Senha incorreta.";
+            }
+
+            try {
+                for (;;) {
+                    const revision = libraryRevision;
+                    const remaining = new Map(unlockedPlaylists);
+                    remaining.delete(folder.id);
+                    const stored = await sealPlaylists(structuredClone(state), remaining, new Set(collapsedPlaylists));
+                    if (revision !== libraryRevision) continue;
+                    storeLibrary(stored);
+                    libraryRevision++;
+                    unlockedPlaylists.delete(folder.id);
+                    savePreferences();
+                    break;
+                }
+            } catch {
+                return "Não foi possível salvar a remoção da senha.";
+            }
+        },
+    });
+}
+
+function unlockPlaylistEditor(folder, onUnlocked) {
     const password = passwordField("Senha da playlist", "current-password");
     openEditor({
         title: "Desbloquear playlist",
         fields: [password.field],
         saveLabel: "Desbloquear",
+        afterRender: onUnlocked && (() => onUnlocked(state.folders.find(item => item.id === folder.id))),
         async save() {
             if (!crypto.subtle) return "Abra o Isolate pelo endereço HTTPS para desbloquear a playlist.";
             const { vault } = folder;
@@ -1244,7 +1355,10 @@ playlistsToggle.addEventListener("click", () => {
 renderPlaylistTray();
 
 function setLibraryOpen(open, focusControl = false) {
-    if (!open) hideTitleTooltip();
+    if (!open) {
+        hideTitleTooltip();
+        closePlaylistMenu();
+    }
     library.hidden = !open;
     const label = open ? "Fechar menu" : "Abrir menu";
     libraryToggle.setAttribute("aria-expanded", String(open));
@@ -1415,7 +1529,7 @@ function revealControls() {
     if (!isPlaying) return;
     idleTimer = setTimeout(() => {
         const focused = document.activeElement;
-        if (editor.open || focused === $("video-link") ||
+        if (editor.open || !playlistMenu.hidden || focused === $("video-link") ||
             (focused instanceof HTMLElement && focused.matches("button:focus-visible, select:focus-visible, input:focus-visible, [role=separator]:focus-visible")) ||
             shell.classList.contains("adjusting") || libraryDrag) return;
         document.body.classList.add("controls-idle");
