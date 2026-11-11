@@ -122,7 +122,22 @@ function ensureVideo(source) {
 function videosIn(id) {
     if (id === history) return state.videos.filter(video => video.lastPlayed).sort((a, b) => b.lastPlayed - a.lastPlayed);
     if (id === watched) return state.videos.filter(video => video.watched).sort((a, b) => b.lastPlayed - a.lastPlayed);
-    return state.videos.filter(video => video.folderId === id).sort((a, b) => b.addedAt - a.addedAt);
+    return state.videos.filter(video => video.folderId === id).sort((a, b) => {
+        const difference = (a.playlistOrder ?? Number.MAX_SAFE_INTEGER) - (b.playlistOrder ?? Number.MAX_SAFE_INTEGER);
+        return difference || b.addedAt - a.addedAt;
+    });
+}
+
+function setPlaylistOrder(videos) {
+    videos.forEach((video, index) => { video.playlistOrder = index; });
+}
+
+function assignPlaylist(video, folderId) {
+    if (video.folderId === folderId) return;
+    const destination = folderId ? videosIn(folderId) : null;
+    video.folderId = folderId;
+    delete video.playlistOrder;
+    if (destination) setPlaylistOrder([...destination, video]);
 }
 
 function element(tag, className, content) {
@@ -289,7 +304,7 @@ function render() {
     const entriesPanel = $("entries");
     entriesPanel.hidden = Boolean(folder && collapsedPlaylists.has(folder.id));
     const visibleVideos = entriesPanel.hidden ? [] : videosIn(collection);
-    const entries = visibleVideos.map(video => {
+    const entries = visibleVideos.map((video, index) => {
         fetchYouTubeTitle(video);
         const row = element("div", "entry");
         row.classList.toggle("current", video.key === current?.key);
@@ -343,6 +358,16 @@ function render() {
             finishRemoval();
         });
         row.append(play, watchControl, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)), remove);
+        if (folder) {
+            const badge = element("span", "entry-position");
+            const position = element("button", "entry-position-button", index + 1);
+            position.type = "button";
+            position.title = "Alterar posição na playlist";
+            position.setAttribute("aria-label", "Alterar posição " + (index + 1) + " de " + video.title);
+            position.addEventListener("click", () => editPlaylistPosition(video));
+            badge.append(position);
+            row.append(badge);
+        }
         return row;
     });
     entriesPanel.replaceChildren(...(entries.length || entriesPanel.hidden ? entries : [
@@ -454,7 +479,7 @@ function editFolder(folder, parentFolder = null) {
                 Object.assign(child, { name, parentId });
             }
             for (const video of state.videos) {
-                if (video.folderId === folder.id) video.folderId = null;
+                if (video.folderId === folder.id) assignPlaylist(video, null);
             }
             state.videos = state.videos.filter(video => video.folderId || video.lastPlayed || video.watched);
             collection = parentId ?? history;
@@ -462,6 +487,32 @@ function editFolder(folder, parentFolder = null) {
         confirm: "Excluir esta playlist? Os vídeos do histórico e dos assistidos continuam nessas listas." +
             (hasChildren ? " As subpastas sobem um nível." : ""),
     });
+}
+
+function editPlaylistPosition(video) {
+    const playlist = videosIn(video.folderId);
+    const previousIndex = playlist.indexOf(video);
+    const position = element("input");
+    position.type = "number";
+    position.required = true;
+    position.min = "1";
+    position.max = String(playlist.length);
+    position.step = "1";
+    position.value = String(previousIndex + 1);
+    openEditor({
+        title: "Alterar posição",
+        fields: [field("Posição na playlist (1 a " + playlist.length + ")", position)],
+        save() {
+            const nextIndex = position.valueAsNumber - 1;
+            if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= playlist.length) {
+                return "Escolha uma posição de 1 a " + playlist.length + ".";
+            }
+            playlist.splice(previousIndex, 1);
+            playlist.splice(nextIndex, 0, video);
+            setPlaylistOrder(playlist);
+        },
+    });
+    position.select();
 }
 
 function addVideoToPlaylist(folder) {
@@ -489,7 +540,7 @@ function addVideoToPlaylist(folder) {
                 video.title = customTitle;
                 video.customTitle = true;
             }
-            video.folderId = folder.id;
+            assignPlaylist(video, folder.id);
             if (collapsedPlaylists.delete(folder.id)) savePreferences();
         },
     });
@@ -506,7 +557,7 @@ function removeVideo(video, view) {
         if (video.folderId || video.watched) return;
     }
     if (video.folderId === view && (video.lastPlayed || video.watched)) {
-        video.folderId = null;
+        assignPlaylist(video, null);
         return;
     }
     state.videos = state.videos.filter(item => item !== video);
@@ -547,8 +598,9 @@ function editVideo(source) {
             const customTitle = titleChanged || Boolean(sameSource && record.customTitle);
             const savedTitle = titleChanged ? enteredTitle : source.key === updated.key ? (video?.title ?? source.title) : updated.title;
             Object.assign(record, updated, {
-                title: savedTitle, customTitle, folderId: folder.value || null, watched: check.checked,
+                title: savedTitle, customTitle, watched: check.checked,
             });
+            assignPlaylist(record, folder.value || null);
             if (!sameSource) {
                 record.lastPlayed = 0;
                 if (current?.key === source.key) loadVideo(record);
