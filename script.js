@@ -18,6 +18,7 @@ let floatingHost;
 let changingWindow = false;
 let edit = null;
 let storageError = false;
+const requestedTitles = new Set();
 
 function showStatus(message = "") {
     $("status").textContent = message || (storageError ? "O navegador não permitiu salvar a biblioteca neste dispositivo." : "");
@@ -77,6 +78,33 @@ function parseSource(input) {
     let title = url.pathname.split("/").filter(Boolean).at(-1) || host;
     try { title = decodeURIComponent(title); } catch { /* Keep the encoded filename. */ }
     return { key: "direct:" + url.href, type: "direct", url: url.href, title };
+}
+
+function needsYouTubeTitle(source) {
+    return source?.type === "youtube" && !source.customTitle && source.title === "YouTube · " + source.id;
+}
+
+async function fetchYouTubeTitle(source) {
+    if (!needsYouTubeTitle(source) || requestedTitles.has(source.key)) return;
+    const { key, url } = source;
+    requestedTitles.add(key);
+    try {
+        const endpoint = new URL("https://www.youtube.com/oembed");
+        endpoint.search = new URLSearchParams({ url, format: "json" });
+        const response = await fetch(endpoint);
+        if (!response.ok) return;
+        const data = await response.json();
+        const title = typeof data.title === "string" ? data.title.trim() : "";
+        if (!title) return;
+
+        const saved = findVideo(key);
+        if (needsYouTubeTitle(saved)) {
+            saved.title = title;
+            persist();
+        }
+        if (current?.key === key && needsYouTubeTitle(current)) current.title = title;
+        if (saved || current?.key === key) render();
+    } catch { /* Keep the existing label if metadata is unavailable. */ }
 }
 
 function findVideo(key) {
@@ -144,21 +172,32 @@ function render() {
     $("edit-folder").hidden = !folder;
 
     const entries = videosIn(collection).map(video => {
+        fetchYouTubeTitle(video);
         const row = element("div", "entry" + (video.key === current?.key ? " current" : ""));
         const play = element("button", "entry-play");
         play.type = "button";
         const title = element("span", "entry-title", video.title);
         title.append(element("small", "", video.watched ? "Assistido" : video.type === "youtube" ? "YouTube" : "Vídeo direto"));
-        play.append(icon(video.watched ? "check_circle" : "play_circle", video.watched ? "watched" : ""), title);
+        const preview = element("span", "entry-preview");
+        preview.append(icon(video.watched ? "check_circle" : "play_circle", video.watched ? "watched" : ""));
+        if (video.type === "youtube") {
+            const thumbnail = element("img");
+            thumbnail.alt = "";
+            thumbnail.loading = "lazy";
+            thumbnail.draggable = false;
+            thumbnail.addEventListener("error", () => thumbnail.remove(), { once: true });
+            thumbnail.src = "https://i.ytimg.com/vi/" + encodeURIComponent(video.id) + "/mqdefault.jpg";
+            preview.append(thumbnail);
+        }
+        play.append(preview, title);
         play.addEventListener("click", () => {
-            if (matchMedia("(max-width: 760px)").matches) setLibraryOpen(false, true);
             loadVideo(video);
         });
         row.append(play, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)));
         return row;
     });
     $("entries").replaceChildren(...(entries.length ? entries : [
-        element("p", "list-empty", folder ? "Nenhum vídeo nesta pasta." :
+        element("p", "list-empty", folder ? "Nenhum vídeo nesta playlist." :
             collection === watched ? "Nenhum vídeo marcado como assistido." : "Os vídeos reproduzidos aparecem aqui."),
     ]));
 
@@ -210,26 +249,29 @@ function textInput(value, maxLength) {
     const input = element("input");
     input.required = true;
     input.maxLength = maxLength;
-    input.value = value;
+    input.defaultValue = value;
     return input;
 }
 
 function editFolder(folder) {
     const name = textInput(folder?.name ?? "", 60);
     openEditor({
-        title: folder ? "Editar pasta" : "Nova pasta",
-        fields: [field("Nome da pasta", name)],
+        title: folder ? "Editar playlist" : "Nova playlist",
+        fields: [field("Nome da playlist", name)],
         save() {
             const value = name.value.trim();
-            if (!value) return "Digite um nome para a pasta.";
+            if (!value) return "Digite um nome para a playlist.";
             if (state.folders.some(item => item.id !== folder?.id && item.name.toLocaleLowerCase("pt-BR") === value.toLocaleLowerCase("pt-BR"))) {
-                return "Já existe uma pasta com esse nome.";
+                return "Já existe uma playlist com esse nome.";
             }
             if (folder) folder.name = value;
             else {
                 const id = crypto.randomUUID?.() ?? String(Date.now() + Math.random());
                 state.folders.push({ id, name: value });
                 collection = id;
+                preferences.playlistsCollapsed = false;
+                renderPlaylistTray();
+                savePreferences();
             }
         },
         remove: folder && (() => {
@@ -240,7 +282,7 @@ function editFolder(folder) {
             state.videos = state.videos.filter(video => video.folderId || video.lastPlayed || video.watched);
             collection = history;
         }),
-        confirm: "Excluir esta pasta? Os vídeos do histórico e dos assistidos continuam nessas listas.",
+        confirm: "Excluir esta playlist? Os vídeos do histórico e dos assistidos continuam nessas listas.",
     });
 }
 
@@ -248,8 +290,9 @@ function editVideo(source) {
     const video = findVideo(source.key);
     const title = textInput(video?.title ?? source.title, 180);
     const link = textInput(video?.url ?? source.url, 4096);
+    link.classList.add("editable-link");
     const folder = element("select");
-    folder.add(new Option("Nenhuma pasta", ""));
+    folder.add(new Option("Nenhuma playlist", ""));
     for (const item of state.folders) folder.add(new Option(item.name, item.id));
     folder.value = video?.folderId ?? (state.folders.some(item => item.id === collection) ? collection : "");
     const inFolder = Boolean(video?.folderId && video.folderId === collection);
@@ -258,17 +301,23 @@ function editVideo(source) {
     check.checked = Boolean(video?.watched);
     openEditor({
         title: video ? "Gerenciar vídeo" : "Salvar vídeo",
-        fields: [field("Título", title), field("Link ou ID", link), field("Pasta", folder), field("Assistido", check)],
+        fields: [field("Título", title), field("Link ou ID", link), field("Playlist", folder), field("Assistido", check)],
         save() {
             const updated = parseSource(link.value);
             if (!updated) return "Insira um link de vídeo válido ou um ID do YouTube.";
             if (!title.value.trim()) return "Digite um título para o vídeo.";
             const duplicate = findVideo(updated.key);
             if (duplicate && duplicate !== video) return "Esse vídeo já está na biblioteca.";
-            if (!video && !folder.value && !check.checked) return "Escolha uma pasta ou marque o vídeo como assistido.";
+            if (!video && !folder.value && !check.checked) return "Escolha uma playlist ou marque o vídeo como assistido.";
             const record = video ?? ensureVideo(updated);
             const sameSource = record.key === updated.key;
-            Object.assign(record, updated, { title: title.value.trim(), folderId: folder.value || null, watched: check.checked });
+            const enteredTitle = title.value.trim();
+            const titleChanged = enteredTitle !== title.defaultValue;
+            const customTitle = titleChanged || Boolean(sameSource && record.customTitle);
+            const savedTitle = titleChanged ? enteredTitle : source.key === updated.key ? (video?.title ?? source.title) : updated.title;
+            Object.assign(record, updated, {
+                title: savedTitle, customTitle, folderId: folder.value || null, watched: check.checked,
+            });
             if (!sameSource) {
                 record.lastPlayed = 0;
                 if (current?.key === source.key) loadVideo(record);
@@ -281,7 +330,7 @@ function editVideo(source) {
             if (inFolder && (video.lastPlayed || video.watched)) video.folderId = null;
             else state.videos = state.videos.filter(item => item !== video);
         }),
-        confirm: inFolder ? "Remover este vídeo da pasta?" : "Excluir este vídeo da biblioteca?",
+        confirm: inFolder ? "Remover este vídeo da playlist?" : "Excluir este vídeo da biblioteca?",
     });
 }
 
@@ -320,9 +369,11 @@ const library = $("library");
 const libraryToggle = $("library-toggle");
 const libraryResize = $("library-resize");
 const themeColor = $("theme-color");
-const soundToggle = $("sound-toggle");
+const retroSounds = $("retro-sounds");
+const startRate = $("start-rate");
+const playlistsToggle = $("playlists-toggle");
 const preferencesKey = "isolate.preferences.v1";
-const defaultPreferences = { color: "#ff525d", libraryWidth: 288, sound: false };
+const defaultPreferences = { color: "#ff525d", libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
 const validColor = /^#[0-9a-f]{6}$/i;
 let preferences = { ...defaultPreferences };
 
@@ -331,6 +382,8 @@ try {
     if (validColor.test(saved?.color)) preferences.color = saved.color;
     if (Number.isFinite(saved?.libraryWidth)) preferences.libraryWidth = saved.libraryWidth;
     if (saved?.sound === true) preferences.sound = true;
+    if ([...startRate.options].some(option => Number(option.value) === saved?.rate)) preferences.rate = saved.rate;
+    if (saved?.playlistsCollapsed === true) preferences.playlistsCollapsed = true;
 } catch { /* Use defaults when preferences are unavailable. */ }
 
 function savePreferences() {
@@ -358,14 +411,40 @@ themeColor.addEventListener("change", () => {
     savePreferences();
 });
 applyTheme(preferences.color);
+startRate.value = String(preferences.rate);
+startRate.addEventListener("change", () => {
+    preferences.rate = Number(startRate.value);
+    savePreferences();
+});
+
+function setLibraryTab(settings) {
+    $("settings").hidden = !settings;
+    $("library-videos").hidden = settings;
+    $("settings-tab").setAttribute("aria-pressed", String(settings));
+    $("videos-tab").setAttribute("aria-pressed", String(!settings));
+}
+$("settings-tab").addEventListener("click", () => setLibraryTab(true));
+$("videos-tab").addEventListener("click", () => setLibraryTab(false));
+
+function renderPlaylistTray() {
+    $("folders").hidden = preferences.playlistsCollapsed;
+    playlistsToggle.setAttribute("aria-expanded", String(!preferences.playlistsCollapsed));
+}
+playlistsToggle.addEventListener("click", () => {
+    preferences.playlistsCollapsed = !preferences.playlistsCollapsed;
+    renderPlaylistTray();
+    savePreferences();
+});
+renderPlaylistTray();
 
 function setLibraryOpen(open, focusControl = false) {
     library.hidden = !open;
-    const label = open ? "Fechar biblioteca" : "Abrir biblioteca";
+    const label = open ? "Fechar menu" : "Abrir menu";
     libraryToggle.setAttribute("aria-expanded", String(open));
     libraryToggle.setAttribute("aria-label", label);
     libraryToggle.title = label;
     if (focusControl) (open ? $("library-close") : libraryToggle).focus();
+    revealControls();
 }
 
 libraryToggle.addEventListener("click", () => setLibraryOpen(library.hidden, true));
@@ -451,25 +530,50 @@ async function playSound(name) {
     } catch { /* Audio feedback is optional. */ }
 }
 
-function renderSoundToggle() {
-    soundToggle.setAttribute("aria-pressed", String(preferences.sound));
-    soundToggle.firstElementChild.textContent = preferences.sound ? "volume_up" : "volume_off";
-}
-soundToggle.addEventListener("click", () => {
-    preferences.sound = !preferences.sound;
-    renderSoundToggle();
+retroSounds.checked = preferences.sound;
+retroSounds.addEventListener("change", () => {
+    preferences.sound = retroSounds.checked;
     savePreferences();
     playSound("confirm");
 });
-renderSoundToggle();
 
 document.addEventListener("click", event => {
     const button = event.target.closest("button");
-    if (!button || button === soundToggle || button.disabled) return;
+    if (!button || button.disabled) return;
     const quiet = ["drag-player", "resize-player", "commit-edit"];
     if (quiet.includes(button.id)) return;
     playSound(["library-close", "cancel-edit", "dock-player"].includes(button.id) ? "close" : "click");
 });
+
+let isPlaying = false;
+let idleTimer;
+
+function revealControls() {
+    document.body.classList.remove("controls-idle");
+    clearTimeout(idleTimer);
+    if (!isPlaying) return;
+    idleTimer = setTimeout(() => {
+        const focused = document.activeElement;
+        if (editor.open || focused === $("video-link") ||
+            (focused instanceof HTMLElement && focused.matches("button:focus-visible, select:focus-visible, input:focus-visible, [role=separator]:focus-visible")) ||
+            shell.classList.contains("adjusting") || libraryDrag) return;
+        document.body.classList.add("controls-idle");
+    }, 2000);
+}
+
+function setPlaying(value) {
+    isPlaying = value;
+    if (value) document.body.classList.add("focus-player");
+    revealControls();
+}
+
+document.addEventListener("pointermove", revealControls, { passive: true });
+document.addEventListener("pointerdown", revealControls, { passive: true });
+document.addEventListener("keydown", revealControls);
+document.addEventListener("focusin", revealControls);
+document.addEventListener("focusout", revealControls);
+document.addEventListener("fullscreenchange", revealControls);
+editor.addEventListener("close", revealControls);
 
 function loadYouTubeAPI() {
     if (window.YT?.Player) return Promise.resolve();
@@ -496,6 +600,7 @@ function loadYouTubeAPI() {
 
 function mediaError(message, active, url = active.source.url, label = "Abrir na origem") {
     if (playback !== active) return;
+    setPlaying(false);
     $("media-error-text").textContent = message;
     $("open-source").href = url;
     $("open-source-label").textContent = label;
@@ -503,6 +608,7 @@ function mediaError(message, active, url = active.source.url, label = "Abrir na 
 }
 
 function stopPlayback() {
+    setPlaying(false);
     if (!playback) return;
     const previous = playback;
     playback = null;
@@ -513,14 +619,16 @@ function stopPlayback() {
 }
 
 function markPlaying(active) {
-    if (playback !== active || active.recorded) return;
+    if (playback !== active) return;
+    setPlaying(active.host === media);
+    if (active.recorded) return;
     active.recorded = true;
     recordPlay(active.source);
 }
 
-async function mountPlayback(source, host, position = 0, autoplay = true, recorded = false) {
+async function mountPlayback(source, host, position = 0, autoplay = true, recorded = false, rate = preferences.rate) {
     stopPlayback();
-    const active = { source, host, recorded, position, autoplay };
+    const active = { source, host, recorded, position, autoplay, rate };
     playback = active;
     const doc = host.ownerDocument;
 
@@ -529,14 +637,22 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
         active.node = video;
         video.controls = true;
         video.playsInline = true;
+        video.draggable = false;
+        video.defaultPlaybackRate = rate;
+        video.playbackRate = rate;
         video.autoplay = autoplay;
         video.src = source.url;
         video.addEventListener("loadedmetadata", () => {
             if (position && position < video.duration) video.currentTime = position;
         }, { once: true });
         video.addEventListener("playing", () => markPlaying(active));
+        video.addEventListener("pause", () => {
+            if (playback === active) setPlaying(false);
+        });
         video.addEventListener("ended", () => {
-            if (playback === active) setWatched(source, true);
+            if (playback !== active) return;
+            setPlaying(false);
+            setWatched(source, true);
         });
         video.addEventListener("error", () => mediaError(
             "Não foi possível reproduzir. Use um link direto para um arquivo de vídeo compatível.", active));
@@ -563,6 +679,7 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
         iframe.title = findVideo(source.key)?.title ?? source.title;
         iframe.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
         iframe.allowFullscreen = true;
+        iframe.draggable = false;
         iframe.referrerPolicy = "strict-origin-when-cross-origin";
         iframe.src = url.href;
         host.append(iframe);
@@ -571,6 +688,7 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
                 onReady(event) {
                     if (playback !== active) return;
                     active.ready = true;
+                    event.target.setPlaybackRate(rate);
                     if (autoplay) event.target.playVideo();
                 },
                 onAutoplayBlocked() {
@@ -581,6 +699,9 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
                 onStateChange(event) {
                     if (playback !== active) return;
                     if (event.data === YT.PlayerState.PLAYING) markPlaying(active);
+                    if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED) {
+                        setPlaying(false);
+                    }
                     if (event.data === YT.PlayerState.ENDED) setWatched(source, true);
                 },
                 onError(event) {
@@ -597,7 +718,11 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
 }
 
 function loadVideo(source) {
-    current = { ...source };
+    setLibraryOpen(false);
+    $("video-link").blur();
+    dockPlayer();
+    current = { ...(findVideo(source.key) ?? source) };
+    fetchYouTubeTitle(current);
     $("video-link").value = source.url;
     $("empty-player").hidden = true;
     $("media-error").hidden = true;
@@ -623,19 +748,20 @@ function playbackState() {
     const active = playback;
     if (!active) return {};
     if (active.source.type === "direct") {
-        return { position: active.node.currentTime, autoplay: !active.node.paused, recorded: active.recorded };
+        return { position: active.node.currentTime, autoplay: !active.node.paused, recorded: active.recorded, rate: active.node.playbackRate };
     }
     if (!active.ready) return active;
     return {
         position: active.controller.getCurrentTime() || 0,
         autoplay: [YT.PlayerState.PLAYING, YT.PlayerState.BUFFERING].includes(active.controller.getPlayerState()),
         recorded: active.recorded,
+        rate: active.controller.getPlaybackRate() || active.rate,
     };
 }
 
 function transferPlayback(host) {
-    const { position, autoplay, recorded } = playbackState();
-    mountPlayback(current, host, position, autoplay, recorded);
+    const { position, autoplay, recorded, rate } = playbackState();
+    mountPlayback(current, host, position, autoplay, recorded, rate);
 }
 
 $("pip").addEventListener("click", async () => {
@@ -739,11 +865,16 @@ function setupHandle(handle, resize) {
         if (!event.isPrimary || event.button !== 0 || document.fullscreenElement) return;
         drag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, rect: shell.getBoundingClientRect() };
         handle.setPointerCapture(event.pointerId);
+        shell.classList.add("adjusting");
     });
     handle.addEventListener("pointermove", event => {
         if (event.pointerId === drag?.pointer) apply(drag.rect, event.clientX - drag.x, event.clientY - drag.y);
     });
-    handle.addEventListener("lostpointercapture", () => { drag = null; });
+    handle.addEventListener("lostpointercapture", () => {
+        drag = null;
+        shell.classList.remove("adjusting");
+        revealControls();
+    });
     handle.addEventListener("keydown", event => {
         const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
         if (!directions[event.key] || document.fullscreenElement) return;
@@ -756,7 +887,6 @@ function setupHandle(handle, resize) {
 
 setupHandle($("drag-player"), false);
 setupHandle($("resize-player"), true);
-$("reset-player").addEventListener("click", dockPlayer);
 $("dock-player").addEventListener("click", () => {
     dockPlayer();
     $("drag-player").focus();

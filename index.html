@@ -13,42 +13,56 @@
     <script src="script.js" defer></script>
 </head>
 <body>
+    <button id="library-toggle" class="icon-button" type="button" title="Abrir menu" aria-label="Abrir menu" aria-controls="library" aria-expanded="false"><span class="icon" aria-hidden="true">menu</span></button>
     <aside id="library" class="library" hidden aria-label="Biblioteca de vídeos">
         <div class="library-heading">
             <h2>Biblioteca</h2>
             <button id="library-close" class="icon-button" type="button" title="Fechar biblioteca" aria-label="Fechar biblioteca"><span class="icon" aria-hidden="true">close</span></button>
         </div>
         <div id="library-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Largura da biblioteca" aria-controls="library" aria-valuemin="230" aria-valuemax="660" aria-valuenow="288"></div>
-        <nav id="collections" aria-label="Coleções"></nav>
-        <div class="folder-heading">
-            <h3>Minhas pastas</h3>
-            <button id="new-folder" class="icon-button" type="button" title="Nova pasta" aria-label="Nova pasta"><span class="icon" aria-hidden="true">create_new_folder</span></button>
-        </div>
-        <nav id="folders" aria-label="Pastas"></nav>
-        <section class="video-list" aria-labelledby="list-title">
-            <div class="list-heading">
-                <h3 id="list-title">Histórico</h3>
-                <button id="edit-folder" class="icon-button" type="button" title="Editar pasta" aria-label="Editar pasta" hidden><span class="icon" aria-hidden="true">edit</span></button>
+        <nav class="library-tabs" aria-label="Seções do menu">
+            <button id="videos-tab" class="button secondary" type="button" aria-controls="library-videos" aria-pressed="true">Vídeos</button>
+            <button id="settings-tab" class="button secondary" type="button" aria-controls="settings" aria-pressed="false">Configurações</button>
+        </nav>
+        <div id="library-videos">
+            <nav id="collections" aria-label="Coleções"></nav>
+            <div class="folder-heading">
+                <h3><button id="playlists-toggle" type="button" aria-controls="folders" aria-expanded="true"><span class="icon" aria-hidden="true">expand_more</span> Playlists</button></h3>
+                <button id="new-folder" class="icon-button" type="button" title="Nova playlist" aria-label="Nova playlist"><span class="icon" aria-hidden="true">create_new_folder</span></button>
             </div>
-            <div id="entries"></div>
+            <nav id="folders" aria-label="Playlists"></nav>
+            <section class="video-list" aria-labelledby="list-title">
+                <div class="list-heading">
+                    <h3 id="list-title">Histórico</h3>
+                    <button id="edit-folder" class="icon-button" type="button" title="Editar playlist" aria-label="Editar playlist" hidden><span class="icon" aria-hidden="true">edit</span></button>
+                </div>
+                <div id="entries"></div>
+            </section>
+        </div>
+        <section id="settings" aria-label="Configurações" hidden>
+            <label class="setting" for="theme-color">
+                Cor do tema <input id="theme-color" type="color" value="#ff525d">
+            </label>
+            <label class="setting" for="start-rate">
+                Velocidade inicial
+                <select id="start-rate">
+                    <option value="0.25">0,25×</option>
+                    <option value="0.5">0,5×</option>
+                    <option value="0.75">0,75×</option>
+                    <option value="1">1×</option>
+                    <option value="1.25">1,25×</option>
+                    <option value="1.5">1,5×</option>
+                    <option value="1.75">1,75×</option>
+                    <option value="2">2×</option>
+                </select>
+            </label>
+            <label class="setting" for="retro-sounds">
+                Sons retrô <input id="retro-sounds" type="checkbox">
+            </label>
         </section>
     </aside>
     <main>
         <div class="workspace">
-            <div class="workspace-title">
-                <div class="workspace-heading">
-                    <button id="library-toggle" class="icon-button" type="button" title="Abrir biblioteca" aria-label="Abrir biblioteca" aria-controls="library" aria-expanded="false"><span class="icon" aria-hidden="true">video_library</span></button>
-                    <h1>Player</h1>
-                </div>
-                <div class="workspace-actions">
-                    <label class="theme-control" title="Cor do tema">
-                        <span class="sr-only">Cor do tema</span>
-                        <input id="theme-color" type="color" value="#ff525d">
-                    </label>
-                    <button id="sound-toggle" class="icon-button" type="button" title="Sons retrô" aria-label="Sons retrô" aria-pressed="false"><span class="icon" aria-hidden="true">volume_off</span></button>
-                    <button id="reset-player" class="button secondary" type="button" aria-label="Centralizar" title="Centralizar"><span class="icon" aria-hidden="true">center_focus_strong</span> <span>Centralizar</span></button>
-                </div>
-            </div>
             <form id="load-form">
                 <label class="sr-only" for="video-link">Link ou ID do vídeo</label>
                 <div class="link-field"><span class="icon" aria-hidden="true">link</span><input id="video-link" type="text" inputmode="url" autocomplete="off" placeholder="Cole um link ou ID do YouTube"></div>
@@ -70,6 +84,7 @@
                     </div>
                     <div id="screen">
                         <div id="media"></div>
+                        <div id="wake-player" aria-hidden="true"></div>
                         <div id="empty-player">
                             <div class="play-tile icon" aria-hidden="true">play_arrow</div>
                             <h2>Pronto para assistir?</h2>
@@ -83,7 +98,6 @@
                     <button id="resize-player" class="icon-button resize" type="button" title="Arraste para redimensionar" aria-label="Redimensionar player. Use as setas no teclado."><span class="icon" aria-hidden="true">resize_bottom_right</span></button>
                 </section>
             </div>
-            <div class="workspace-footer"><span>YOUTUBE · MP4 · WEBM · OGG</span><span><span class="icon" aria-hidden="true">open_with</span> Arraste para mover ou redimensionar</span></div>
         </div>
     </main>
     <dialog id="editor" aria-labelledby="editor-title">
