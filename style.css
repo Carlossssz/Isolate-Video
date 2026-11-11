@@ -54,7 +54,11 @@ h1, h2, h3, p { margin: 0; }
 }
 .entry.is-watched small { color: color-mix(in srgb, var(--accent) 70%, var(--text)); }
 .entry-watch { position: absolute; top: 11px; left: 11px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 5px; background: #10131bf2; opacity: 0; pointer-events: none; cursor: pointer; }
-.entry-watch input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.entry-watch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.entry-watch-box { display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid var(--muted); border-radius: 3px; background: var(--panel); pointer-events: none; }
+.entry-watch input:checked + .entry-watch-box { background: var(--accent); border-color: var(--accent); }
+.entry-watch input:checked + .entry-watch-box::before { content: ""; width: 10px; height: 10px; background: var(--accent-ink); clip-path: polygon(0 50%, 15% 35%, 40% 60%, 85% 15%, 100% 30%, 40% 90%); }
+.entry-watch input:focus-visible + .entry-watch-box { outline: 2px solid var(--accent); outline-offset: 2px; }
 .entry:has(.entry-preview:hover, .entry-watch:hover, .entry-watch:focus-within) .entry-watch { opacity: 1; pointer-events: auto; }
 .entry:has(.entry-preview:hover, .entry-watch:hover, .entry-watch:focus-within) .entry-preview .watched { visibility: hidden; }
 @media (hover: none) {

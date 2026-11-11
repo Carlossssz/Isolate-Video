@@ -327,7 +327,9 @@ function render() {
                 (replacement ?? $("collections").querySelector('[aria-current="true"]'))?.focus();
             }
         });
-        watchControl.append(watchCheckbox);
+        const watchBox = element("span", "entry-watch-box");
+        watchBox.setAttribute("aria-hidden", "true");
+        watchControl.append(watchCheckbox, watchBox);
         row.append(play, watchControl, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)));
         return row;
     });
