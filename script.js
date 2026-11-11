@@ -577,11 +577,12 @@ window.addEventListener("resize", hideTitleTooltip);
 const libraryToggle = $("library-toggle");
 const libraryResize = $("library-resize");
 const themeColor = $("theme-color");
+const oppositeColors = $("opposite-colors");
 const retroSounds = $("retro-sounds");
 const startRate = $("start-rate");
 const playlistsToggle = $("playlists-toggle");
 const preferencesKey = "isolate.preferences.v1";
-const defaultPreferences = { color: "#ff525d", libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
+const defaultPreferences = { color: "#ff525d", oppositeColors: false, libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
 const validColor = /^#[0-9a-f]{6}$/i;
 let preferences = { ...defaultPreferences };
 const collapsedPlaylists = new Set();
@@ -589,6 +590,7 @@ const collapsedPlaylists = new Set();
 try {
     const saved = JSON.parse(localStorage.getItem(preferencesKey));
     if (validColor.test(saved?.color)) preferences.color = saved.color;
+    if (saved?.oppositeColors === true) preferences.oppositeColors = true;
     if (Number.isFinite(saved?.libraryWidth)) preferences.libraryWidth = saved.libraryWidth;
     if (saved?.sound === true) preferences.sound = true;
     if ([...startRate.options].some(option => Number(option.value) === saved?.rate)) preferences.rate = saved.rate;
@@ -613,6 +615,8 @@ function applyTheme(color) {
     const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
     const root = document.documentElement;
     root.style.setProperty("--accent", color);
+    const inverse = (0xffffff ^ parseInt(color.slice(1), 16)).toString(16).padStart(6, "0");
+    root.style.setProperty("--watched-glow", preferences.oppositeColors ? "#" + inverse : color);
     root.style.setProperty("--accent-ink", luminance > 0.179 ? "#000000" : "#ffffff");
     root.style.setProperty("--accent-hover", luminance > 0.179 ?
         "color-mix(in srgb, var(--accent) 80%, white)" : "color-mix(in srgb, var(--accent) 80%, black)");
@@ -622,6 +626,12 @@ function applyTheme(color) {
 themeColor.addEventListener("input", () => applyTheme(themeColor.value));
 themeColor.addEventListener("change", () => {
     preferences.color = themeColor.value;
+    savePreferences();
+});
+oppositeColors.checked = preferences.oppositeColors;
+oppositeColors.addEventListener("change", () => {
+    preferences.oppositeColors = oppositeColors.checked;
+    applyTheme(themeColor.value);
     savePreferences();
 });
 applyTheme(preferences.color);
