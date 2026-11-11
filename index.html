@@ -10,77 +10,79 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
-    <link rel="stylesheet" href="style.css?v=surface-theme">
-    <script src="script.js?v=watch-new-tab" defer></script>
+    <link rel="stylesheet" href="style.css?v=sidebar-resize-gap">
+    <script src="script.js?v=sidebar-resize-gap" defer></script>
 </head>
 <body>
     <button id="library-toggle" class="icon-button" type="button" title="Abrir menu" aria-label="Abrir menu" aria-controls="library" aria-expanded="false"><span class="icon" aria-hidden="true">menu</span></button>
     <aside id="library" class="library" hidden aria-label="Biblioteca de vídeos">
-        <div class="library-heading">
-            <h2>Biblioteca</h2>
-            <button id="library-close" class="icon-button" type="button" title="Fechar biblioteca" aria-label="Fechar biblioteca"><span class="icon" aria-hidden="true">close</span></button>
+        <div id="library-scroll" class="library-scroll">
+            <div class="library-heading">
+                <h2>Biblioteca</h2>
+                <button id="library-close" class="icon-button" type="button" title="Fechar biblioteca" aria-label="Fechar biblioteca"><span class="icon" aria-hidden="true">close</span></button>
+            </div>
+            <nav class="library-tabs" aria-label="Seções do menu">
+                <button id="videos-tab" class="button secondary" type="button" aria-controls="library-videos" aria-pressed="true">Vídeos</button>
+                <button id="settings-tab" class="button secondary" type="button" aria-controls="settings" aria-pressed="false">Configurações</button>
+            </nav>
+            <div id="library-videos">
+                <nav id="collections" aria-label="Coleções"></nav>
+                <div class="folder-heading">
+                    <h3><button id="playlists-toggle" type="button" aria-controls="folders" aria-expanded="true"><span class="icon" aria-hidden="true">expand_more</span> Playlists</button></h3>
+                    <button id="new-folder" class="icon-button" type="button" title="Nova playlist" aria-label="Nova playlist"><span class="icon" aria-hidden="true">create_new_folder</span></button>
+                </div>
+                <nav id="folders" aria-label="Playlists"></nav>
+                <section class="video-list" aria-labelledby="list-title">
+                    <div class="list-heading">
+                        <h3 id="list-title">Histórico</h3>
+                        <button id="add-playlist-video" class="button secondary" type="button" hidden>
+                            <span class="icon" aria-hidden="true">video_call</span> Adicionar vídeo
+                        </button>
+                    </div>
+                    <div id="entries"></div>
+                </section>
+            </div>
+            <section id="settings" aria-label="Configurações" hidden>
+                <label class="setting" for="theme-color">
+                    Cor do tema <input id="theme-color" type="color" value="#ff525d">
+                </label>
+                <label class="setting" for="background-color">
+                    Cor de fundo <input id="background-color" type="color" value="#0d0f15">
+                </label>
+                <label class="setting" for="watched-color">
+                    Cor dos vídeos assistidos <input id="watched-color" type="color" value="#ff525d">
+                </label>
+                <label class="setting" for="start-rate">
+                    Velocidade inicial
+                    <select id="start-rate">
+                        <option value="0.25">0,25×</option>
+                        <option value="0.5">0,5×</option>
+                        <option value="0.75">0,75×</option>
+                        <option value="1">1×</option>
+                        <option value="1.25">1,25×</option>
+                        <option value="1.5">1,5×</option>
+                        <option value="1.75">1,75×</option>
+                        <option value="2">2×</option>
+                    </select>
+                </label>
+                <label class="setting" for="shift-delete">
+                    Atalho Shift para excluir vídeos <input id="shift-delete" type="checkbox" checked>
+                </label>
+                <label class="setting" for="retro-sounds">
+                    Sons retrô <input id="retro-sounds" type="checkbox">
+                </label>
+                <section class="backup-settings" aria-labelledby="backup-title">
+                    <h3 id="backup-title">Backup</h3>
+                    <div class="backup-actions">
+                        <button id="export-backup" class="button secondary" type="button"><span class="icon" aria-hidden="true">upload</span> Exportar tudo</button>
+                        <button id="import-backup" class="button secondary" type="button"><span class="icon" aria-hidden="true">download</span> Importar backup</button>
+                    </div>
+                    <input id="backup-file" type="file" accept=".json,application/json" hidden>
+                    <p id="backup-status" role="status" hidden></p>
+                </section>
+            </section>
         </div>
         <div id="library-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Largura da biblioteca" aria-controls="library" aria-valuemin="230" aria-valuemax="660" aria-valuenow="288"></div>
-        <nav class="library-tabs" aria-label="Seções do menu">
-            <button id="videos-tab" class="button secondary" type="button" aria-controls="library-videos" aria-pressed="true">Vídeos</button>
-            <button id="settings-tab" class="button secondary" type="button" aria-controls="settings" aria-pressed="false">Configurações</button>
-        </nav>
-        <div id="library-videos">
-            <nav id="collections" aria-label="Coleções"></nav>
-            <div class="folder-heading">
-                <h3><button id="playlists-toggle" type="button" aria-controls="folders" aria-expanded="true"><span class="icon" aria-hidden="true">expand_more</span> Playlists</button></h3>
-                <button id="new-folder" class="icon-button" type="button" title="Nova playlist" aria-label="Nova playlist"><span class="icon" aria-hidden="true">create_new_folder</span></button>
-            </div>
-            <nav id="folders" aria-label="Playlists"></nav>
-            <section class="video-list" aria-labelledby="list-title">
-                <div class="list-heading">
-                    <h3 id="list-title">Histórico</h3>
-                    <button id="add-playlist-video" class="button secondary" type="button" hidden>
-                        <span class="icon" aria-hidden="true">video_call</span> Adicionar vídeo
-                    </button>
-                </div>
-                <div id="entries"></div>
-            </section>
-        </div>
-        <section id="settings" aria-label="Configurações" hidden>
-            <label class="setting" for="theme-color">
-                Cor do tema <input id="theme-color" type="color" value="#ff525d">
-            </label>
-            <label class="setting" for="background-color">
-                Cor de fundo <input id="background-color" type="color" value="#0d0f15">
-            </label>
-            <label class="setting" for="watched-color">
-                Cor dos vídeos assistidos <input id="watched-color" type="color" value="#ff525d">
-            </label>
-            <label class="setting" for="start-rate">
-                Velocidade inicial
-                <select id="start-rate">
-                    <option value="0.25">0,25×</option>
-                    <option value="0.5">0,5×</option>
-                    <option value="0.75">0,75×</option>
-                    <option value="1">1×</option>
-                    <option value="1.25">1,25×</option>
-                    <option value="1.5">1,5×</option>
-                    <option value="1.75">1,75×</option>
-                    <option value="2">2×</option>
-                </select>
-            </label>
-            <label class="setting" for="shift-delete">
-                Atalho Shift para excluir vídeos <input id="shift-delete" type="checkbox" checked>
-            </label>
-            <label class="setting" for="retro-sounds">
-                Sons retrô <input id="retro-sounds" type="checkbox">
-            </label>
-            <section class="backup-settings" aria-labelledby="backup-title">
-                <h3 id="backup-title">Backup</h3>
-                <div class="backup-actions">
-                    <button id="export-backup" class="button secondary" type="button"><span class="icon" aria-hidden="true">upload</span> Exportar tudo</button>
-                    <button id="import-backup" class="button secondary" type="button"><span class="icon" aria-hidden="true">download</span> Importar backup</button>
-                </div>
-                <input id="backup-file" type="file" accept=".json,application/json" hidden>
-                <p id="backup-status" role="status" hidden></p>
-            </section>
-        </section>
     </aside>
     <main>
         <div class="workspace">

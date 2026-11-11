@@ -830,7 +830,7 @@ $("cancel-edit").addEventListener("click", () => editor.close());
 $("new-folder").addEventListener("click", () => editFolder());
 
 const library = $("library");
-library.addEventListener("scroll", () => {
+$("library-scroll").addEventListener("scroll", () => {
     hideTitleTooltip();
     closeLibraryMenu();
 }, { passive: true });
