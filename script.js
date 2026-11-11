@@ -19,6 +19,9 @@ let changingWindow = false;
 let edit = null;
 let storageError = false;
 const requestedTitles = new Set();
+const unlockedPlaylists = new Map();
+let libraryRevision = 0;
+let libraryStorageValue;
 
 function showStatus(message = "") {
     $("status").textContent = message || (storageError ? "O navegador não permitiu salvar a biblioteca neste dispositivo." : "");
@@ -26,22 +29,39 @@ function showStatus(message = "") {
 }
 
 try {
-    const saved = JSON.parse(localStorage.getItem(storageKey));
+    libraryStorageValue = localStorage.getItem(storageKey);
+    const saved = JSON.parse(libraryStorageValue);
     if (Array.isArray(saved?.folders) && Array.isArray(saved?.videos)) state = saved;
 } catch {
     storageError = true;
     showStatus();
 }
 
+function storeLibrary(library) {
+    if (localStorage.getItem(storageKey) !== libraryStorageValue) {
+        throw new Error("A biblioteca foi alterada em outra aba.");
+    }
+    const value = JSON.stringify(library);
+    localStorage.setItem(storageKey, value);
+    libraryStorageValue = value;
+}
+
 function persist() {
-    try {
-        localStorage.setItem(storageKey, JSON.stringify(state));
-    } catch {
+    const revision = ++libraryRevision;
+    function store(library) {
+        if (revision === libraryRevision) storeLibrary(library);
+    }
+    function failed() {
+        if (revision !== libraryRevision) return;
         storageError = true;
         showStatus();
     }
+    if (unlockedPlaylists.size) {
+        encryptedLibrarySnapshot().then(store).catch(failed);
+    } else {
+        try { store(state); } catch { failed(); }
+    }
 }
-
 function parseSource(input) {
     const raw = input.trim();
     const validID = /^[A-Za-z0-9_-]{11}$/;
@@ -171,7 +191,10 @@ function collectionButton(id, label, symbol) {
         element("span", "count", videosIn(id).length));
     button.addEventListener("click", () => {
         collection = id;
-        if (collapsedPlaylists.delete(id)) savePreferences();
+        if (collapsedPlaylists.delete(id)) {
+            savePreferences();
+            if (protectedPlaylistAncestor(id)) persist();
+        }
         render();
         const container = id === history || id === watched ? $("collections") : $("folders");
         container.querySelector('[aria-current="true"]')?.focus();
@@ -227,6 +250,7 @@ function togglePlaylist(id) {
         }
     }
     savePreferences();
+    if (protectedPlaylistAncestor(id)) persist();
     render();
     document.getElementById("playlist-toggle-" + id)?.focus();
 }
@@ -235,7 +259,7 @@ function playlistSelect(emptyLabel, excludedId) {
     const select = element("select");
     select.add(new Option(emptyLabel, ""));
     for (const { folder, path } of playlistTree(excludedId)) {
-        select.add(new Option(path, folder.id));
+        if (!folder.vault) select.add(new Option(path, folder.id));
     }
     return select;
 }
@@ -284,9 +308,20 @@ function render() {
         collectionButton(watched, "Assistidos", "check_circle"));
     $("folders").replaceChildren(...playlistTree(undefined, true).map(({ folder: item, path, depth }) => {
         const row = element("div", "playlist-row");
-        const button = collectionButton(item.id, item.name, depth ? "folder_open" : "folder");
+        const rowSymbol = unlockedPlaylists.has(item.id) ? "lock_open" : depth ? "folder_open" : "folder";
+        const button = item.vault
+            ? action("lock", "Desbloquear playlist protegida", () => unlockPlaylistEditor(item))
+            : collectionButton(item.id, item.name, rowSymbol);
+        if (item.vault) {
+            button.className = "collection";
+            button.append(element("span", "collection-label", item.name));
+        }
         button.title = path;
         row.style.setProperty("--playlist-indent", Math.min(depth, 5) * 8 + "px");
+        if (item.vault) {
+            row.append(button);
+            return row;
+        }
         const expanded = !collapsedPlaylists.has(item.id);
         const toggle = action(expanded ? "expand_more" : "chevron_right",
             (expanded ? "Recolher " : "Expandir ") + path, () => togglePlaylist(item.id));
@@ -441,6 +476,16 @@ function editFolder(folder, parentFolder = null) {
     if (parent) {
         parent.value = folder.parentId ?? "";
         fields.push(field("Playlist superior", parent));
+        const unlocked = unlockedPlaylists.has(folder.id);
+        const protection = action(unlocked ? "lock_open" : "lock",
+            unlocked ? "Bloquear agora" : "Proteger com senha", () => {
+                editor.close();
+                if (unlocked) lockPlaylistEditor(folder);
+                else protectPlaylistEditor(folder);
+            });
+        protection.className = "button secondary";
+        protection.append(document.createTextNode(unlocked ? "Bloquear agora" : "Proteger com senha"));
+        fields.push(protection);
     }
     const hasChildren = folder && state.folders.some(item => item.parentId === folder.id);
     openEditor({
@@ -466,6 +511,23 @@ function editFolder(folder, parentFolder = null) {
             savePreferences();
         },
         remove: folder && (() => {
+            if (unlockedPlaylists.has(folder.id)) {
+                const ids = playlistIds(state, folder.id);
+                discardPrivatePlayback(ids);
+                for (const id of ids) {
+                    unlockedPlaylists.delete(id);
+                    collapsedPlaylists.delete(id);
+                }
+                state = withoutPlaylists(state, ids);
+                savePreferences();
+                collection = folder.parentId ?? history;
+                return;
+            }
+            const privateFolder = protectedPlaylistAncestor(folder.id);
+            if (privateFolder) {
+                discardPrivatePlayback(new Set([folder.id]));
+                state.videos = state.videos.filter(video => video.folderId !== folder.id);
+            }
             state.folders = state.folders.filter(item => item.id !== folder.id);
             collapsedPlaylists.delete(folder.id);
             savePreferences();
@@ -484,8 +546,9 @@ function editFolder(folder, parentFolder = null) {
             state.videos = state.videos.filter(video => video.folderId || video.lastPlayed || video.watched);
             collection = parentId ?? history;
         }),
-        confirm: "Excluir esta playlist? Os vídeos do histórico e dos assistidos continuam nessas listas." +
-            (hasChildren ? " As subpastas sobem um nível." : ""),
+        confirm: folder && unlockedPlaylists.has(folder.id)
+            ? "Excluir esta playlist protegida, suas subpastas e seus vídeos?"
+            : "Excluir esta playlist?" + (hasChildren ? " As subpastas sobem um nível." : ""),
     });
 }
 
@@ -556,9 +619,12 @@ function removeVideo(video, view) {
         video.lastPlayed = 0;
         if (video.folderId || video.watched) return;
     }
-    if (video.folderId === view && (video.lastPlayed || video.watched)) {
+    if (video.folderId === view && !protectedPlaylistAncestor(view) && (video.lastPlayed || video.watched)) {
         assignPlaylist(video, null);
         return;
+    }
+    if (current?.key === video.key && protectedPlaylistAncestor(video.folderId)) {
+        discardPrivatePlayback(new Set([video.folderId]));
     }
     state.videos = state.videos.filter(item => item !== video);
 }
@@ -614,24 +680,49 @@ function editVideo(source) {
     });
 }
 
-$("editor-form").addEventListener("submit", event => {
-    event.preventDefault();
-    const error = edit.save();
+function finishEditorSave(config, error) {
     if (error) {
         $("editor-error").textContent = error;
         $("editor-error").hidden = false;
         return;
     }
     editor.close();
-    if (edit.afterSave) {
-        edit.afterSave();
+    if (config.afterSave) {
+        config.afterSave();
         return;
     }
     playSound("confirm");
-    persist();
+    if (!config.alreadySaved) persist();
     render();
-});
+}
 
+$("editor-form").addEventListener("submit", event => {
+    event.preventDefault();
+    const config = edit;
+    if (config.pending) return;
+    const result = config.save();
+    if (!(result instanceof Promise)) {
+        finishEditorSave(config, result);
+        return;
+    }
+    config.pending = true;
+    const buttons = [...editor.querySelectorAll("button")];
+    for (const button of buttons) button.disabled = true;
+    result.then(error => finishEditorSave(config, error))
+        .catch(() => finishEditorSave(config, "Não foi possível concluir a operação."))
+        .finally(() => {
+            config.pending = false;
+            for (const button of buttons) button.disabled = false;
+        });
+});
+editor.addEventListener("cancel", event => {
+    if (edit?.pending) event.preventDefault();
+});
+editor.addEventListener("close", () => {
+    if (!editor.open) {
+        for (const input of editor.querySelectorAll('input[type="password"]')) input.value = "";
+    }
+});
 $("delete-item").addEventListener("click", () => {
     if (edit.confirm && $("delete-item").textContent !== "Confirmar exclusão") {
         $("editor-error").textContent = edit.confirm;
@@ -680,13 +771,269 @@ try {
 } catch { /* Use defaults when preferences are unavailable. */ }
 
 function preferenceSnapshot() {
-    return { ...preferences, collapsedPlaylists: [...collapsedPlaylists] };
+    const privateIds = new Set();
+    for (const id of unlockedPlaylists.keys()) {
+        for (const privateId of playlistIds(state, id)) privateIds.add(privateId);
+    }
+    return { ...preferences, collapsedPlaylists: [...collapsedPlaylists].filter(id => !privateIds.has(id)) };
 }
 
 function savePreferences() {
     try {
         localStorage.setItem(preferencesKey, JSON.stringify(preferenceSnapshot()));
     } catch { /* Preferences still apply to the current page. */ }
+}
+
+const lockedPlaylistName = "Playlist protegida";
+const vaultVersion = 1;
+const vaultEncoder = new TextEncoder();
+const vaultDecoder = new TextDecoder();
+const passwordIterations = 600000;
+const playlistLockChannel = typeof BroadcastChannel === "function" ? new BroadcastChannel("isolate-playlist-locks") : null;
+playlistLockChannel?.addEventListener("message", event => {
+    if (state.folders.some(folder => folder.id === event.data && !folder.vault)) location.reload();
+});
+
+function playlistIds(library, rootId) {
+    const children = new Map();
+    for (const folder of library.folders) {
+        const id = folder.parentId ?? null;
+        if (!children.has(id)) children.set(id, []);
+        children.get(id).push(folder.id);
+    }
+    const ids = new Set([rootId]);
+    for (const id of ids) {
+        for (const child of children.get(id) ?? []) ids.add(child);
+    }
+    return ids;
+}
+
+function protectedPlaylistAncestor(id) {
+    while (id) {
+        if (unlockedPlaylists.has(id)) return id;
+        id = state.folders.find(folder => folder.id === id)?.parentId;
+    }
+    return null;
+}
+
+function withoutPlaylists(library, ids) {
+    return {
+        folders: library.folders.filter(folder => !ids.has(folder.id)),
+        videos: library.videos.filter(video => !ids.has(video.folderId)),
+    };
+}
+
+function toBase64(bytes) {
+    let encoded = "";
+    for (let start = 0; start < bytes.length; start += 8192) {
+        encoded += String.fromCharCode(...bytes.subarray(start, start + 8192));
+    }
+    return btoa(encoded);
+}
+
+function fromBase64(value) {
+    return Uint8Array.from(atob(value), character => character.charCodeAt(0));
+}
+
+function validVault(vault) {
+    if (vault?.version !== vaultVersion ||
+        ![vault.salt, vault.iv, vault.data].every(value => typeof value === "string")) return false;
+    try {
+        return fromBase64(vault.salt).length === 16 && fromBase64(vault.iv).length === 12 &&
+            fromBase64(vault.data).length > 16;
+    } catch {
+        return false;
+    }
+}
+
+async function playlistKey(password, salt) {
+    const material = await crypto.subtle.importKey("raw", vaultEncoder.encode(password), "PBKDF2", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations: passwordIterations, hash: "SHA-256" },
+        material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"],
+    );
+}
+
+function vaultAlgorithm(id, iv) {
+    return { name: "AES-GCM", iv, additionalData: vaultEncoder.encode("isolate-playlist-v1:" + id) };
+}
+
+async function sealPlaylist(library, id, session, collapsed) {
+    const ids = playlistIds(library, id);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const payload = {
+        folders: library.folders.filter(folder => ids.has(folder.id))
+            .map(folder => folder.id === id ? { ...folder, parentId: null } : folder),
+        videos: library.videos.filter(video => ids.has(video.folderId)),
+        collapsed: [...collapsed].filter(folderId => ids.has(folderId)),
+    };
+    const encrypted = await crypto.subtle.encrypt(
+        vaultAlgorithm(id, iv), session.key, vaultEncoder.encode(JSON.stringify(payload)),
+    );
+    const vault = { version: vaultVersion, salt: toBase64(session.salt), iv: toBase64(iv), data: toBase64(new Uint8Array(encrypted)) };
+    return {
+        folders: library.folders.filter(folder => !ids.has(folder.id) || folder.id === id).map(folder =>
+            folder.id === id ? { id, parentId: folder.parentId ?? null, name: lockedPlaylistName, vault } : folder),
+        videos: library.videos.filter(video => !ids.has(video.folderId)),
+    };
+}
+
+async function sealPlaylists(library, sessions, collapsed) {
+    const parents = new Map(library.folders.map(folder => [folder.id, folder.parentId]));
+    function depth(id) {
+        let level = 0;
+        while (parents.get(id)) {
+            level++;
+            id = parents.get(id);
+        }
+        return level;
+    }
+    const order = [...sessions.keys()].map(id => ({ id, depth: depth(id) })).sort((a, b) => b.depth - a.depth);
+    for (const { id } of order) {
+        library = await sealPlaylist(library, id, sessions.get(id), collapsed);
+    }
+    return library;
+}
+
+function encryptedLibrarySnapshot() {
+    return sealPlaylists(structuredClone(state), new Map(unlockedPlaylists), new Set(collapsedPlaylists));
+}
+
+function discardPrivatePlayback(ids) {
+    const active = current && findVideo(current.key);
+    if (!active || !ids.has(active.folderId)) return;
+    stopPlayback();
+    if (floatingWindow) floatingWindow.close();
+    if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+    current = null;
+    $("video-link").value = "";
+    $("empty-player").hidden = false;
+    $("media-error").hidden = true;
+    document.body.classList.remove("focus-player");
+    dockPlayer();
+    showStatus();
+}
+
+async function lockPlaylist(folder, session) {
+    for (;;) {
+        const revision = libraryRevision;
+        const library = structuredClone(state);
+        const ids = playlistIds(library, folder.id);
+        const collapsed = new Set(collapsedPlaylists);
+        const inside = new Map([[folder.id, session]]);
+        const outside = new Map();
+        for (const [id, key] of unlockedPlaylists) {
+            (ids.has(id) ? inside : outside).set(id, key);
+        }
+        const next = await sealPlaylists(library, inside, collapsed);
+        const stored = await sealPlaylists(next, outside, collapsed);
+        if (revision !== libraryRevision) continue;
+
+        storeLibrary(stored);
+        libraryRevision++;
+        discardPrivatePlayback(ids);
+        for (const id of ids) {
+            unlockedPlaylists.delete(id);
+            collapsedPlaylists.delete(id);
+        }
+        state = next;
+        if (ids.has(collection)) collection = folder.parentId ?? history;
+        savePreferences();
+        playlistLockChannel?.postMessage(folder.id);
+        return;
+    }
+}
+
+function passwordField(label, autocomplete) {
+    const input = element("input");
+    input.type = "password";
+    input.required = true;
+    input.maxLength = 256;
+    input.autocomplete = autocomplete;
+    return { input, field: field(label, input) };
+}
+
+function protectPlaylistEditor(folder) {
+    const password = passwordField("Senha da playlist", "new-password");
+    const repeat = passwordField("Repita a senha", "new-password");
+    password.input.minLength = 8;
+    openEditor({
+        title: "Proteger playlist com senha",
+        fields: [password.field, repeat.field, element("p", "", "A senha protege esta playlist e suas subpastas. Guarde-a para abrir a playlist depois.")],
+        saveLabel: "Proteger e bloquear",
+        alreadySaved: true,
+        async save() {
+            if (password.input.value.length < 8) return "Use pelo menos 8 caracteres.";
+            if (password.input.value !== repeat.input.value) return "As senhas não coincidem.";
+            if (!crypto.subtle) return "Abra o Isolate pelo endereço HTTPS para proteger a playlist.";
+            try {
+                const salt = crypto.getRandomValues(new Uint8Array(16));
+                const key = await playlistKey(password.input.value, salt);
+                await lockPlaylist(folder, { key, salt });
+            } catch {
+                return "Não foi possível salvar a playlist protegida neste navegador.";
+            }
+        },
+    });
+}
+
+function lockPlaylistEditor(folder) {
+    openEditor({
+        title: "Bloquear playlist",
+        fields: [element("p", "", "A playlist volta a pedir a senha ao ser aberta.")],
+        saveLabel: "Bloquear",
+        alreadySaved: true,
+        async save() {
+            try {
+                await lockPlaylist(folder, unlockedPlaylists.get(folder.id));
+            } catch {
+                return "Não foi possível salvar e bloquear a playlist.";
+            }
+        },
+    });
+}
+
+function unlockPlaylistEditor(folder) {
+    const password = passwordField("Senha da playlist", "current-password");
+    openEditor({
+        title: "Desbloquear playlist",
+        fields: [password.field],
+        saveLabel: "Desbloquear",
+        async save() {
+            if (!crypto.subtle) return "Abra o Isolate pelo endereço HTTPS para desbloquear a playlist.";
+            const { vault } = folder;
+            let payload, salt, key;
+            try {
+                salt = fromBase64(vault.salt);
+                key = await playlistKey(password.input.value, salt);
+                const decrypted = await crypto.subtle.decrypt(
+                    vaultAlgorithm(folder.id, fromBase64(vault.iv)), key, fromBase64(vault.data),
+                );
+                payload = JSON.parse(vaultDecoder.decode(decrypted));
+            } catch {
+                return "Senha incorreta ou playlist protegida danificada.";
+            }
+            if (!validLibrary(payload) || !Array.isArray(payload.collapsed)) return "Não foi possível ler a playlist protegida.";
+            const roots = payload.folders.filter(item => item.parentId == null);
+            if (roots.length !== 1 || roots[0].id !== folder.id || roots[0].vault) {
+                return "Não foi possível ler a playlist protegida.";
+            }
+
+            const otherFolders = state.folders.filter(item => item.id !== folder.id);
+            const otherIds = new Set(otherFolders.map(item => item.id));
+            if (payload.folders.some(item => otherIds.has(item.id))) return "Já existe uma playlist com esse identificador.";
+            const privateKeys = new Set(payload.videos.map(video => video.key));
+            roots[0].parentId = folder.parentId;
+            state.folders.splice(state.folders.indexOf(folder), 1, ...payload.folders);
+            state.videos = state.videos.filter(video => !privateKeys.has(video.key)).concat(payload.videos);
+            unlockedPlaylists.set(folder.id, { key, salt });
+            for (const id of payload.collapsed) {
+                if (typeof id === "string") collapsedPlaylists.add(id);
+            }
+            expandPlaylistPath(folder.id);
+            collection = folder.id;
+        },
+    });
 }
 
 const backupFormat = "isolate-backup";
@@ -698,8 +1045,16 @@ function setBackupStatus(message = "") {
     status.hidden = !message;
 }
 
-function exportBackup() {
-    const payload = { format: backupFormat, version: backupVersion, library: state, preferences: preferenceSnapshot() };
+async function exportBackup() {
+    const settings = preferenceSnapshot();
+    let library;
+    try {
+        library = unlockedPlaylists.size ? await encryptedLibrarySnapshot() : state;
+    } catch {
+        setBackupStatus("Não foi possível preparar o backup.");
+        return;
+    }
+    const payload = { format: backupFormat, version: backupVersion, library, preferences: settings };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
     const link = element("a");
     link.href = url;
@@ -713,24 +1068,35 @@ function exportBackup() {
 
 function validBackup(payload) {
     if (payload?.format !== backupFormat || payload.version !== backupVersion) return false;
-    const folders = payload.library?.folders;
-    const videos = payload.library?.videos;
     const settings = payload.preferences;
-    if (!Array.isArray(folders) || !Array.isArray(videos) || !settings ||
+    if (!settings ||
         !Object.entries(defaultPreferences).every(([key, value]) => typeof settings[key] === typeof value) ||
         !validColor.test(settings.color) || !Number.isFinite(settings.libraryWidth) ||
         ![...startRate.options].some(option => Number(option.value) === settings.rate) ||
         !Array.isArray(settings.collapsedPlaylists) ||
         !settings.collapsedPlaylists.every(id => typeof id === "string")) return false;
+    return validLibrary(payload.library);
+}
+
+function validLibrary(library) {
+    const folders = library?.folders;
+    const videos = library?.videos;
+    if (!Array.isArray(folders) || !Array.isArray(videos)) return false;
 
     const parents = new Map();
+    const locked = new Set();
     for (const folder of folders) {
         if (typeof folder?.id !== "string" || !folder.id || [history, watched].includes(folder.id) ||
             parents.has(folder.id) || typeof folder.name !== "string" || !folder.name.trim()) return false;
+        if (folder.vault !== undefined) {
+            if (!validVault(folder.vault) || folder.name !== lockedPlaylistName) return false;
+            locked.add(folder.id);
+        }
         parents.set(folder.id, folder.parentId ?? null);
     }
     const rooted = new Set();
     for (const folder of folders) {
+        if (locked.has(folder.parentId)) return false;
         const path = new Set();
         let id = folder.id;
         while (id !== null && !rooted.has(id)) {
@@ -747,7 +1113,7 @@ function validBackup(payload) {
         if (!source || source.key !== video.key || source.type !== video.type || source.id !== video.id ||
             keys.has(video.key) || typeof video.title !== "string" || typeof video.watched !== "boolean" ||
             !Number.isFinite(video.lastPlayed) || !Number.isFinite(video.addedAt) ||
-            (video.folderId !== null && !parents.has(video.folderId)) ||
+            (video.folderId !== null && (!parents.has(video.folderId) || locked.has(video.folderId))) ||
             (video.customTitle !== undefined && typeof video.customTitle !== "boolean") ||
             (video.playlistOrder !== undefined && (!Number.isSafeInteger(video.playlistOrder) || video.playlistOrder < 0))) return false;
         keys.add(video.key);
@@ -757,12 +1123,13 @@ function validBackup(payload) {
 
 function restoreBackup(payload) {
     const previousLibrary = localStorage.getItem(storageKey);
-    localStorage.setItem(storageKey, JSON.stringify(payload.library));
+    storeLibrary(payload.library);
     try {
         localStorage.setItem(preferencesKey, JSON.stringify(payload.preferences));
     } catch (error) {
         if (previousLibrary === null) localStorage.removeItem(storageKey);
         else localStorage.setItem(storageKey, previousLibrary);
+        libraryStorageValue = previousLibrary;
         throw error;
     }
 }
@@ -801,7 +1168,7 @@ $("backup-file").addEventListener("change", async event => {
                 return "O navegador não conseguiu salvar o backup. Verifique o espaço de armazenamento do site.";
             }
         },
-        afterSave() { location.reload(); },
+        afterSave() { libraryRevision++; location.reload(); },
     });
 });
 
