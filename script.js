@@ -247,7 +247,9 @@ function showTitleTooltip(title, x, y) {
 
 function attachTitleTooltip(button, title) {
     const followPointer = event => {
-        if (event.pointerType !== "touch") showTitleTooltip(title, event.clientX, event.clientY);
+        if (event.pointerType !== "touch" && !(event.shiftKey && preferences.shiftDelete)) {
+            showTitleTooltip(title, event.clientX, event.clientY);
+        }
     };
     button.addEventListener("pointerenter", followPointer);
     button.addEventListener("pointermove", followPointer);
@@ -330,7 +332,17 @@ function render() {
         const watchBox = element("span", "entry-watch-box");
         watchBox.setAttribute("aria-hidden", "true");
         watchControl.append(watchCheckbox, watchBox);
-        row.append(play, watchControl, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)));
+        const remove = element("button", "entry-delete");
+        remove.type = "button";
+        remove.tabIndex = -1;
+        remove.setAttribute("aria-label", "Remover " + video.title);
+        remove.append(icon("delete"));
+        remove.addEventListener("click", event => {
+            if (!event.shiftKey || !preferences.shiftDelete) return;
+            removeVideo(video, collection);
+            finishRemoval();
+        });
+        row.append(play, watchControl, action("more_vert", "Gerenciar " + video.title, () => editVideo(video)), remove);
         return row;
     });
     entriesPanel.replaceChildren(...(entries.length || entriesPanel.hidden ? entries : [
@@ -488,6 +500,24 @@ $("add-playlist-video").addEventListener("click", () => {
     if (folder) addVideoToPlaylist(folder);
 });
 
+function removeVideo(video, view) {
+    if (view === history && video.lastPlayed) {
+        video.lastPlayed = 0;
+        if (video.folderId || video.watched) return;
+    }
+    if (video.folderId === view && (video.lastPlayed || video.watched)) {
+        video.folderId = null;
+        return;
+    }
+    state.videos = state.videos.filter(item => item !== video);
+}
+
+function finishRemoval() {
+    playSound("confirm");
+    persist();
+    render();
+}
+
 function editVideo(source) {
     const video = findVideo(source.key);
     const title = textInput(video?.title ?? source.title, 180);
@@ -495,8 +525,8 @@ function editVideo(source) {
     link.classList.add("editable-link");
     const folder = playlistSelect("Nenhuma playlist");
     folder.value = video?.folderId ?? (state.folders.some(item => item.id === collection) ? collection : "");
-    const inFolder = Boolean(video?.folderId && video.folderId === collection);
-    const inHistory = collection === history && Boolean(video?.lastPlayed);
+    const view = collection;
+    const inHistory = view === history && Boolean(video?.lastPlayed);
     const check = element("input");
     check.type = "checkbox";
     check.checked = Boolean(video?.watched);
@@ -527,17 +557,8 @@ function editVideo(source) {
                 state.videos = state.videos.filter(item => item !== record);
             }
         },
-        remove: video && (() => {
-            if (inHistory) {
-                video.lastPlayed = 0;
-                if (video.folderId || video.watched) return;
-            }
-            if (inFolder && (video.lastPlayed || video.watched)) video.folderId = null;
-            else state.videos = state.videos.filter(item => item !== video);
-        }),
+        remove: video && (() => removeVideo(video, view)),
         removeLabel: inHistory ? "Remover do histórico" : undefined,
-        confirm: inHistory ? "Remover este vídeo do histórico?" :
-            inFolder ? "Remover este vídeo da playlist?" : "Excluir este vídeo da biblioteca?",
     });
 }
 
@@ -556,7 +577,7 @@ $("editor-form").addEventListener("submit", event => {
 });
 
 $("delete-item").addEventListener("click", () => {
-    if ($("delete-item").textContent !== "Confirmar exclusão") {
+    if (edit.confirm && $("delete-item").textContent !== "Confirmar exclusão") {
         $("editor-error").textContent = edit.confirm;
         $("editor-error").hidden = false;
         $("delete-item").textContent = "Confirmar exclusão";
@@ -564,9 +585,7 @@ $("delete-item").addEventListener("click", () => {
     }
     edit.remove();
     editor.close();
-    playSound("confirm");
-    persist();
-    render();
+    finishRemoval();
 });
 $("cancel-edit").addEventListener("click", () => editor.close());
 $("new-folder").addEventListener("click", () => editFolder());
@@ -579,10 +598,11 @@ const libraryResize = $("library-resize");
 const themeColor = $("theme-color");
 const oppositeColors = $("opposite-colors");
 const retroSounds = $("retro-sounds");
+const shiftDelete = $("shift-delete");
 const startRate = $("start-rate");
 const playlistsToggle = $("playlists-toggle");
 const preferencesKey = "isolate.preferences.v1";
-const defaultPreferences = { color: "#ff525d", oppositeColors: false, libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
+const defaultPreferences = { color: "#ff525d", oppositeColors: false, shiftDelete: true, libraryWidth: 288, sound: false, rate: 1, playlistsCollapsed: false };
 const validColor = /^#[0-9a-f]{6}$/i;
 let preferences = { ...defaultPreferences };
 const collapsedPlaylists = new Set();
@@ -591,6 +611,7 @@ try {
     const saved = JSON.parse(localStorage.getItem(preferencesKey));
     if (validColor.test(saved?.color)) preferences.color = saved.color;
     if (saved?.oppositeColors === true) preferences.oppositeColors = true;
+    if (saved?.shiftDelete === false) preferences.shiftDelete = false;
     if (Number.isFinite(saved?.libraryWidth)) preferences.libraryWidth = saved.libraryWidth;
     if (saved?.sound === true) preferences.sound = true;
     if ([...startRate.options].some(option => Number(option.value) === saved?.rate)) preferences.rate = saved.rate;
@@ -799,6 +820,29 @@ async function playSound(name) {
     } catch { /* Audio feedback is optional. */ }
 }
 
+function setShiftDeleteMode(held) {
+    const enabled = held && preferences.shiftDelete;
+    const entries = $("entries");
+    if (entries.classList.toggle("shift-delete-active", enabled)) hideTitleTooltip();
+}
+
+shiftDelete.checked = preferences.shiftDelete;
+shiftDelete.addEventListener("change", () => {
+    preferences.shiftDelete = shiftDelete.checked;
+    setShiftDeleteMode(false);
+    savePreferences();
+});
+document.addEventListener("keydown", event => {
+    if (event.key === "Shift") setShiftDeleteMode(event.shiftKey);
+});
+document.addEventListener("keyup", event => {
+    if (event.key === "Shift") setShiftDeleteMode(event.shiftKey);
+});
+$("entries").addEventListener("pointermove", event => {
+    setShiftDeleteMode(event.shiftKey && event.pointerType !== "touch");
+}, { passive: true });
+window.addEventListener("blur", () => setShiftDeleteMode(false));
+
 retroSounds.checked = preferences.sound;
 retroSounds.addEventListener("change", () => {
     preferences.sound = retroSounds.checked;
@@ -808,13 +852,13 @@ retroSounds.addEventListener("change", () => {
 
 document.addEventListener("click", event => {
     const button = event.target.closest("button");
-    if (event.target.closest("#library-resize, .entry-watch")) return;
+    if (event.target.closest("#library-resize, .entry-watch, .entry-delete")) return;
     if (!button) {
         playSound("screenClick");
         return;
     }
     if (button.disabled) return;
-    const quiet = ["drag-player", "resize-player", "commit-edit"];
+    const quiet = ["drag-player", "resize-player", "commit-edit", "delete-item"];
     if (quiet.includes(button.id)) return;
     playSound(["library-close", "cancel-edit", "dock-player"].includes(button.id) ? "close" : "click");
 });

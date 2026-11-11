@@ -164,10 +164,13 @@ body.focus-player { background: #000; }
 
 .entry-preview { position: relative; display: grid; place-items: center; width: 100%; max-width: 216px; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 5px; background: #0d0f15; }
 .entry-preview .watched { position: absolute; z-index: 1; top: 5px; left: 5px; width: 23px; height: 23px; padding: 3px; border-radius: 5px; background: #10131be8; font-size: 17px; }
+.entry-delete { display: none; position: absolute; z-index: 3; top: 7px; left: 7px; place-items: center; width: calc(100% - 14px); max-width: 216px; aspect-ratio: 16 / 9; padding: 0; border: 0; border-radius: 5px; background: #080b12d9; color: var(--card-accent); }
+.entry-delete .icon { font-size: 58px; }
+.shift-delete-active .entry:has(.entry-preview:hover, .entry-watch:hover, .entry-delete:hover, > .icon-button:hover) .entry-delete { display: grid; }
 .entry-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
 #video-title-tooltip { position: fixed; z-index: 10; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: #10131b; color: var(--text); box-shadow: 0 6px 18px #0008; overflow-wrap: anywhere; pointer-events: none; font-size: 14px; }
 
 @container video-list (width < 378px) {
-    .entry, .entry-preview { max-width: none; }
+    .entry, .entry-preview, .entry-delete { max-width: none; }
 }
