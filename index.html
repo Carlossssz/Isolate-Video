@@ -1,47 +1,102 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-
+<!doctype html>
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Isolamento de vídeo</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>Isolate — Player de vídeo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=menu,open_with" />
+    <script src="script.js" defer></script>
 </head>
-
 <body>
-    <div id="menuBox">
-        <div id="menu">
-
+    <aside id="library" class="library" hidden aria-label="Biblioteca de vídeos">
+        <div class="library-heading">
+            <h2>Biblioteca</h2>
+            <button id="library-close" class="icon-button" type="button" title="Fechar biblioteca" aria-label="Fechar biblioteca"><span class="icon" aria-hidden="true">close</span></button>
         </div>
-        <div id="menuBtn">
-            <span class="material-symbols-outlined" style="user-select: none;">
-                menu
-            </span>
+        <div id="library-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Largura da biblioteca" aria-controls="library" aria-valuemin="230" aria-valuemax="660" aria-valuenow="288"></div>
+        <nav id="collections" aria-label="Coleções"></nav>
+        <div class="folder-heading">
+            <h3>Minhas pastas</h3>
+            <button id="new-folder" class="icon-button" type="button" title="Nova pasta" aria-label="Nova pasta"><span class="icon" aria-hidden="true">create_new_folder</span></button>
         </div>
-    </div>
-
-s
-    <div id="box">
-
-        <div id="areaLink">
-            <input type="text" id="linkDoVideo">
-            <input type="submit" id="buscarVideo" value="Buscar">
+        <nav id="folders" aria-label="Pastas"></nav>
+        <section class="video-list" aria-labelledby="list-title">
+            <div class="list-heading">
+                <h3 id="list-title">Histórico</h3>
+                <button id="edit-folder" class="icon-button" type="button" title="Editar pasta" aria-label="Editar pasta" hidden><span class="icon" aria-hidden="true">edit</span></button>
+            </div>
+            <div id="entries"></div>
+        </section>
+    </aside>
+    <main>
+        <div class="workspace">
+            <div class="workspace-title">
+                <div class="workspace-heading">
+                    <button id="library-toggle" class="icon-button" type="button" title="Abrir biblioteca" aria-label="Abrir biblioteca" aria-controls="library" aria-expanded="false"><span class="icon" aria-hidden="true">video_library</span></button>
+                    <h1>Player</h1>
+                </div>
+                <div class="workspace-actions">
+                    <label class="theme-control" title="Cor do tema">
+                        <span class="sr-only">Cor do tema</span>
+                        <input id="theme-color" type="color" value="#ff525d">
+                    </label>
+                    <button id="sound-toggle" class="icon-button" type="button" title="Sons retrô" aria-label="Sons retrô" aria-pressed="false"><span class="icon" aria-hidden="true">volume_off</span></button>
+                    <button id="reset-player" class="button secondary" type="button" aria-label="Centralizar" title="Centralizar"><span class="icon" aria-hidden="true">center_focus_strong</span> <span>Centralizar</span></button>
+                </div>
+            </div>
+            <form id="load-form">
+                <label class="sr-only" for="video-link">Link ou ID do vídeo</label>
+                <div class="link-field"><span class="icon" aria-hidden="true">link</span><input id="video-link" type="text" inputmode="url" autocomplete="off" placeholder="Cole um link ou ID do YouTube"></div>
+                <button class="button primary" type="submit"><span class="icon" aria-hidden="true">play_arrow</span> Reproduzir</button>
+            </form>
+            <p id="status" role="status" hidden></p>
+            <div id="player-dock">
+                <section id="player-shell" class="player-shell" aria-label="Reprodutor">
+                    <div class="player-toolbar">
+                        <button id="drag-player" class="icon-button drag" type="button" aria-label="Mover player. Use as setas no teclado." title="Arraste para mover"><span class="icon" aria-hidden="true">drag_indicator</span></button>
+                        <span id="now-playing">Reprodutor</span>
+                        <div class="player-actions">
+                            <button id="save-video" class="icon-button" type="button" title="Salvar vídeo" aria-label="Salvar vídeo" disabled><span class="icon" aria-hidden="true">bookmark_add</span></button>
+                            <button id="watch-video" class="icon-button" type="button" title="Marcar como assistido" aria-label="Marcar como assistido" aria-pressed="false" disabled><span class="icon" aria-hidden="true">check_circle</span></button>
+                            <button id="pip" class="icon-button" type="button" title="Janela flutuante (Picture-in-Picture)" aria-label="Janela flutuante" disabled><span class="icon" aria-hidden="true">picture_in_picture_alt</span></button>
+                            <button id="fullscreen" class="icon-button" type="button" title="Tela cheia" aria-label="Tela cheia"><span class="icon" aria-hidden="true">fullscreen</span></button>
+                            <button id="dock-player" class="icon-button" type="button" title="Voltar à posição inicial" aria-label="Voltar à posição inicial" hidden><span class="icon" aria-hidden="true">keyboard_return</span></button>
+                        </div>
+                    </div>
+                    <div id="screen">
+                        <div id="media"></div>
+                        <div id="empty-player">
+                            <div class="play-tile icon" aria-hidden="true">play_arrow</div>
+                            <h2>Pronto para assistir?</h2>
+                            <p>Cole um link do YouTube ou um link direto para um arquivo de vídeo.</p>
+                        </div>
+                        <div id="media-error" hidden>
+                            <p id="media-error-text"></p>
+                            <a id="open-source" target="_blank" rel="noopener noreferrer"><span id="open-source-label">Abrir na origem</span> <span class="icon" aria-hidden="true">open_in_new</span></a>
+                        </div>
+                    </div>
+                    <button id="resize-player" class="icon-button resize" type="button" title="Arraste para redimensionar" aria-label="Redimensionar player. Use as setas no teclado."><span class="icon" aria-hidden="true">resize_bottom_right</span></button>
+                </section>
+            </div>
+            <div class="workspace-footer"><span>YOUTUBE · MP4 · WEBM · OGG</span><span><span class="icon" aria-hidden="true">open_with</span> Arraste para mover ou redimensionar</span></div>
         </div>
-
-        <div id="areaDeVideo">
-            <div id="player"></div>
-            <span class="material-symbols-outlined" id="resize">
-                open_with
-            </span>
-        </div>
-
-
-    </div>
-
-    <script src="https://www.youtube.com/iframe_api"></script>
-    <script src="script.js"></script>
+    </main>
+    <dialog id="editor" aria-labelledby="editor-title">
+        <form id="editor-form">
+            <h2 id="editor-title"></h2>
+            <div id="editor-fields"></div>
+            <p id="editor-error" role="alert" hidden></p>
+            <div class="dialog-actions">
+                <button id="delete-item" class="button danger" type="button" hidden>Excluir</button>
+                <button id="cancel-edit" class="button secondary" type="button">Cancelar</button>
+                <button id="commit-edit" class="button primary" type="submit">Salvar</button>
+            </div>
+        </form>
+    </dialog>
 </body>
-
 </html>
