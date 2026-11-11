@@ -282,6 +282,7 @@ function render() {
         return row;
     }));
     $("list-title").textContent = folder?.name ?? (collection === watched ? "Assistidos" : "Histórico");
+    $("add-playlist-video").hidden = !folder;
 
     const entriesPanel = $("entries");
     entriesPanel.hidden = Boolean(folder && collapsedPlaylists.has(folder.id));
@@ -430,6 +431,35 @@ function editFolder(folder, parentFolder = null) {
             (hasChildren ? " As subpastas sobem um nível." : ""),
     });
 }
+
+function addVideoToPlaylist(folder) {
+    const link = textInput("", 4096);
+    link.classList.add("editable-link");
+    link.inputMode = "url";
+    link.autocomplete = "off";
+    openEditor({
+        title: "Adicionar vídeo em " + folder.name,
+        fields: [field("Link ou ID do YouTube", link)],
+        save() {
+            const source = parseSource(link.value);
+            if (!source) return "Insira um link direto de vídeo ou um link ou ID do YouTube.";
+            const existing = findVideo(source.key);
+            if (existing?.folderId === folder.id) return "Este vídeo já está nesta playlist.";
+            if (existing?.folderId) {
+                return "Este vídeo está em outra playlist. Use o menu do vídeo para movê-lo.";
+            }
+
+            const video = existing ?? ensureVideo(source);
+            video.folderId = folder.id;
+            if (collapsedPlaylists.delete(folder.id)) savePreferences();
+        },
+    });
+}
+
+$("add-playlist-video").addEventListener("click", () => {
+    const folder = state.folders.find(item => item.id === collection);
+    if (folder) addVideoToPlaylist(folder);
+});
 
 function editVideo(source) {
     const video = findVideo(source.key);
