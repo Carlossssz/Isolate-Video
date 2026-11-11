@@ -163,11 +163,34 @@ function collectionButton(id, label, symbol) {
     return button;
 }
 
+function playlistTree(parentId = null, ancestors = [], excludedId) {
+    return state.folders.filter(folder => (folder.parentId ?? null) === parentId && folder.id !== excludedId)
+        .flatMap(folder => {
+            const path = [...ancestors, folder.name];
+            return [{ folder, path }, ...playlistTree(folder.id, path, excludedId)];
+        });
+}
+
+function playlistSelect(emptyLabel, excludedId) {
+    const select = element("select");
+    select.add(new Option(emptyLabel, ""));
+    for (const { folder, path } of playlistTree(null, [], excludedId)) {
+        select.add(new Option(path.join(" / "), folder.id));
+    }
+    return select;
+}
+
 function render() {
     const folder = state.folders.find(item => item.id === collection);
     $("collections").replaceChildren(collectionButton(history, "Histórico", "history"),
         collectionButton(watched, "Assistidos", "check_circle"));
-    $("folders").replaceChildren(...state.folders.map(item => collectionButton(item.id, item.name, "folder")));
+    $("folders").replaceChildren(...playlistTree().map(({ folder: item, path }) => {
+        const depth = path.length - 1;
+        const button = collectionButton(item.id, item.name, depth ? "folder_open" : "folder");
+        button.title = path.join(" / ");
+        button.style.setProperty("--playlist-indent", Math.min(depth, 5) * 12 + "px");
+        return button;
+    }));
     $("list-title").textContent = folder?.name ?? (collection === watched ? "Assistidos" : "Histórico");
     $("edit-folder").hidden = !folder;
 
@@ -253,21 +276,33 @@ function textInput(value, maxLength) {
     return input;
 }
 
+function hasPlaylistName(name, parentId, excludedId) {
+    const normalized = name.toLocaleLowerCase("pt-BR");
+    return state.folders.some(item => item.id !== excludedId &&
+        (item.parentId ?? null) === parentId && item.name.toLocaleLowerCase("pt-BR") === normalized);
+}
+
 function editFolder(folder) {
     const name = textInput(folder?.name ?? "", 60);
+    const parent = playlistSelect("Nível principal", folder?.id);
+    const currentFolder = state.folders.find(item => item.id === collection);
+    parent.value = folder ? (folder.parentId ?? "") : (currentFolder?.id ?? "");
+    const hasChildren = folder && state.folders.some(item => item.parentId === folder.id);
     openEditor({
         title: folder ? "Editar playlist" : "Nova playlist",
-        fields: [field("Nome da playlist", name)],
+        fields: [field("Nome da playlist", name), field("Playlist superior", parent)],
         save() {
             const value = name.value.trim();
             if (!value) return "Digite um nome para a playlist.";
-            if (state.folders.some(item => item.id !== folder?.id && item.name.toLocaleLowerCase("pt-BR") === value.toLocaleLowerCase("pt-BR"))) {
-                return "Já existe uma playlist com esse nome.";
+            const parentId = parent.value || null;
+            if (hasPlaylistName(value, parentId, folder?.id)) {
+                return "Já existe uma playlist com esse nome neste nível.";
             }
-            if (folder) folder.name = value;
-            else {
+            if (folder) {
+                Object.assign(folder, { name: value, parentId });
+            } else {
                 const id = crypto.randomUUID?.() ?? String(Date.now() + Math.random());
-                state.folders.push({ id, name: value });
+                state.folders.push({ id, name: value, parentId });
                 collection = id;
                 preferences.playlistsCollapsed = false;
                 renderPlaylistTray();
@@ -276,13 +311,23 @@ function editFolder(folder) {
         },
         remove: folder && (() => {
             state.folders = state.folders.filter(item => item.id !== folder.id);
+            const parentId = folder.parentId ?? null;
+            for (const child of state.folders.filter(item => item.parentId === folder.id)) {
+                let name = child.name;
+                for (let number = 2; hasPlaylistName(name, parentId, child.id); number++) {
+                    const suffix = " (" + number + ")";
+                    name = child.name.slice(0, 60 - suffix.length) + suffix;
+                }
+                Object.assign(child, { name, parentId });
+            }
             for (const video of state.videos) {
                 if (video.folderId === folder.id) video.folderId = null;
             }
             state.videos = state.videos.filter(video => video.folderId || video.lastPlayed || video.watched);
-            collection = history;
+            collection = parentId ?? history;
         }),
-        confirm: "Excluir esta playlist? Os vídeos do histórico e dos assistidos continuam nessas listas.",
+        confirm: "Excluir esta playlist? Os vídeos do histórico e dos assistidos continuam nessas listas." +
+            (hasChildren ? " As subpastas sobem um nível." : ""),
     });
 }
 
@@ -291,9 +336,7 @@ function editVideo(source) {
     const title = textInput(video?.title ?? source.title, 180);
     const link = textInput(video?.url ?? source.url, 4096);
     link.classList.add("editable-link");
-    const folder = element("select");
-    folder.add(new Option("Nenhuma playlist", ""));
-    for (const item of state.folders) folder.add(new Option(item.name, item.id));
+    const folder = playlistSelect("Nenhuma playlist");
     folder.value = video?.folderId ?? (state.folders.some(item => item.id === collection) ? collection : "");
     const inFolder = Boolean(video?.folderId && video.folderId === collection);
     const check = element("input");
