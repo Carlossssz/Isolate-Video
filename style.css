@@ -39,7 +39,7 @@ h1, h2, h3, p { margin: 0; }
 .count { font: 11px "IBM Plex Mono", monospace; }
 .folder-heading, .list-heading { display: flex; justify-content: space-between; align-items: center; min-height: 36px; gap: 6px; padding-left: 8px; }
 .folder-heading { margin-top: 18px; }
-.video-list { margin-top: 22px; padding-top: 11px; border-top: 1px solid var(--line); }
+.video-list { container: video-list / inline-size; margin-top: 22px; padding-top: 11px; border-top: 1px solid var(--line); }
 .list-empty { color: var(--muted); font-size: 14px; padding: 7px 8px; }
 #entries { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 185px), 1fr)); gap: 8px; }
 .entry { position: relative; width: 100%; max-width: 232px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
@@ -142,3 +142,7 @@ body.focus-player { background: #000; }
 .entry-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
 #video-title-tooltip { position: fixed; z-index: 10; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: #10131b; color: var(--text); box-shadow: 0 6px 18px #0008; overflow-wrap: anywhere; pointer-events: none; font-size: 14px; }
+
+@container video-list (width < 378px) {
+    .entry, .entry-preview { max-width: none; }
+}
