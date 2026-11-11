@@ -1462,6 +1462,7 @@ function setLibraryOpen(open, focusControl = false) {
         closeLibraryMenu();
     }
     library.hidden = !open;
+    library.inert = !open;
     const label = open ? "Fechar menu" : "Abrir menu";
     libraryToggle.setAttribute("aria-expanded", String(open));
     libraryToggle.setAttribute("aria-label", label);

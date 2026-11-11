@@ -163,11 +163,18 @@ body { -webkit-user-select: none; user-select: none; }
 #library-toggle:hover { border-color: var(--accent); }
 .library { z-index: 7; }
 @media (prefers-reduced-motion: no-preference) {
-    .library:not([hidden]) { animation: library-enter 190ms ease-out; }
-}
-@keyframes library-enter {
-    from { transform: translateX(-100%); }
-    to { transform: translateX(0); }
+    .library {
+        transform: translateX(0);
+        visibility: visible;
+        transition: transform 190ms ease-out, visibility 0s;
+    }
+    .library[hidden] {
+        display: block !important;
+        transform: translateX(-100%);
+        visibility: hidden;
+        pointer-events: none;
+        transition-delay: 0s, 190ms;
+    }
 }
 .library .library-tabs { display: flex; flex-wrap: wrap; margin-bottom: 15px; }
 .library-tabs .button { flex: 1; }
