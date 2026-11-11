@@ -30,7 +30,10 @@ h1, h2, h3, p { margin: 0; }
 .collection { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; padding: 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); text-align: left; }
 .collection:hover, .icon-button:hover:not(:disabled) { color: var(--text); background: #232938; }
 .collection[aria-current="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); border-color: color-mix(in srgb, var(--accent) 33%, var(--line)); }
-#folders .collection { padding-left: calc(9px + var(--playlist-indent, 0px)); }
+.playlist-row { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.playlist-row > .icon-button { width: 28px; height: 30px; }
+.playlist-row > .icon-button .icon { font-size: 18px; }
+#folders .collection { flex: 1; padding-left: calc(9px + var(--playlist-indent, 0px)); }
 .collection-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .count { font: 11px "IBM Plex Mono", monospace; }
 .folder-heading, .list-heading { display: flex; justify-content: space-between; align-items: center; min-height: 36px; gap: 6px; padding-left: 8px; }
@@ -84,6 +87,7 @@ main { display: grid; place-items: center; min-height: 100dvh; padding: 62px 12p
 #media-error a { color: var(--accent); display: flex; align-items: center; gap: 6px; }
 dialog { width: min(440px, calc(100% - 26px)); border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); padding: 24px; }
 dialog::backdrop { background: #06080bc4; }
+#editor-title { overflow-wrap: anywhere; }
 #editor-fields { display: grid; gap: 12px; margin: 16px 0; }
 #editor-fields label { display: grid; gap: 5px; color: var(--muted); }
 #editor-fields label:has(input[type="checkbox"]) { display: flex; align-items: center; flex-direction: row-reverse; justify-content: flex-end; gap: 8px; }

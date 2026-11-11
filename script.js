@@ -163,19 +163,38 @@ function collectionButton(id, label, symbol) {
     return button;
 }
 
-function playlistTree(parentId = null, ancestors = [], excludedId) {
-    return state.folders.filter(folder => (folder.parentId ?? null) === parentId && folder.id !== excludedId)
-        .flatMap(folder => {
-            const path = [...ancestors, folder.name];
-            return [{ folder, path }, ...playlistTree(folder.id, path, excludedId)];
-        });
-}
+function playlistTree(excludedId) {
+    const children = new Map();
+    for (const folder of state.folders) {
+        if (folder.id === excludedId) continue;
+        const parentId = folder.parentId ?? null;
+        if (!children.has(parentId)) children.set(parentId, []);
+        children.get(parentId).push(folder);
+    }
 
+    const playlists = [];
+    const pending = [];
+    function queueChildren(parentId, prefix, depth) {
+        const siblings = children.get(parentId) ?? [];
+        for (let index = siblings.length - 1; index >= 0; index--) {
+            const folder = siblings[index];
+            pending.push({ folder, depth, path: prefix + folder.name });
+        }
+    }
+
+    queueChildren(null, "", 0);
+    while (pending.length) {
+        const item = pending.pop();
+        playlists.push(item);
+        queueChildren(item.folder.id, item.path + " / ", item.depth + 1);
+    }
+    return playlists;
+}
 function playlistSelect(emptyLabel, excludedId) {
     const select = element("select");
     select.add(new Option(emptyLabel, ""));
-    for (const { folder, path } of playlistTree(null, [], excludedId)) {
-        select.add(new Option(path.join(" / "), folder.id));
+    for (const { folder, path } of playlistTree(excludedId)) {
+        select.add(new Option(path, folder.id));
     }
     return select;
 }
@@ -220,12 +239,13 @@ function render() {
     const folder = state.folders.find(item => item.id === collection);
     $("collections").replaceChildren(collectionButton(history, "Histórico", "history"),
         collectionButton(watched, "Assistidos", "check_circle"));
-    $("folders").replaceChildren(...playlistTree().map(({ folder: item, path }) => {
-        const depth = path.length - 1;
+    $("folders").replaceChildren(...playlistTree().map(({ folder: item, path, depth }) => {
+        const row = element("div", "playlist-row");
         const button = collectionButton(item.id, item.name, depth ? "folder_open" : "folder");
-        button.title = path.join(" / ");
+        button.title = path;
         button.style.setProperty("--playlist-indent", Math.min(depth, 5) * 12 + "px");
-        return button;
+        row.append(button, action("add", "Criar subpasta em " + path, () => editFolder(null, item)));
+        return row;
     }));
     $("list-title").textContent = folder?.name ?? (collection === watched ? "Assistidos" : "Histórico");
     $("edit-folder").hidden = !folder;
@@ -320,19 +340,22 @@ function hasPlaylistName(name, parentId, excludedId) {
         (item.parentId ?? null) === parentId && item.name.toLocaleLowerCase("pt-BR") === normalized);
 }
 
-function editFolder(folder) {
+function editFolder(folder, parentFolder = null) {
     const name = textInput(folder?.name ?? "", 60);
-    const parent = playlistSelect("Nível principal", folder?.id);
-    const currentFolder = state.folders.find(item => item.id === collection);
-    parent.value = folder ? (folder.parentId ?? "") : (currentFolder?.id ?? "");
+    const parent = folder ? playlistSelect("Nível principal", folder.id) : null;
+    const fields = [field("Nome da playlist", name)];
+    if (parent) {
+        parent.value = folder.parentId ?? "";
+        fields.push(field("Playlist superior", parent));
+    }
     const hasChildren = folder && state.folders.some(item => item.parentId === folder.id);
     openEditor({
-        title: folder ? "Editar playlist" : "Nova playlist",
-        fields: [field("Nome da playlist", name), field("Playlist superior", parent)],
+        title: folder ? "Editar playlist" : parentFolder ? "Nova subpasta em " + parentFolder.name : "Nova playlist",
+        fields,
         save() {
             const value = name.value.trim();
             if (!value) return "Digite um nome para a playlist.";
-            const parentId = parent.value || null;
+            const parentId = parent ? (parent.value || null) : (parentFolder?.id ?? null);
             if (hasPlaylistName(value, parentId, folder?.id)) {
                 return "Já existe uma playlist com esse nome neste nível.";
             }
