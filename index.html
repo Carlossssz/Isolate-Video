@@ -10,8 +10,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
-    <link rel="stylesheet" href="style.css?v=library-slide">
-    <script src="script.js?v=share-backups" defer></script>
+    <link rel="stylesheet" href="style.css?v=playlist-watch-all">
+    <script src="script.js?v=playlist-watch-all" defer></script>
 </head>
 <body>
     <button id="library-toggle" class="icon-button" type="button" title="Abrir menu" aria-label="Abrir menu" aria-controls="library" aria-expanded="false"><span class="icon" aria-hidden="true">menu</span></button>
@@ -38,6 +38,10 @@
                         <button id="add-playlist-video" class="button secondary" type="button" hidden>
                             <span class="icon" aria-hidden="true">video_call</span> Adicionar vídeo
                         </button>
+                    </div>
+                    <div id="playlist-watch-actions" class="playlist-watch-actions" hidden>
+                        <button id="mark-playlist-watched" class="button secondary" type="button">Marcar todos como assistidos</button>
+                        <button id="unmark-playlist-watched" class="button secondary" type="button">Desmarcar todos</button>
                     </div>
                     <div id="entries"></div>
                 </section>

@@ -430,6 +430,9 @@ function render() {
     const entriesPanel = $("entries");
     entriesPanel.hidden = Boolean(folder && collapsedPlaylists.has(folder.id));
     const visibleVideos = entriesPanel.hidden ? [] : videosIn(collection);
+    $("playlist-watch-actions").hidden = !folder || entriesPanel.hidden;
+    $("mark-playlist-watched").disabled = !visibleVideos.some(video => !video.watched);
+    $("unmark-playlist-watched").disabled = !visibleVideos.some(video => video.watched);
     const entries = visibleVideos.map((video, index) => {
         fetchYouTubeTitle(video);
         const row = element("div", "entry");
@@ -517,6 +520,19 @@ function setWatched(source, value, feedback = true) {
     persist();
     render();
 }
+
+function setPlaylistWatched(value) {
+    if (!state.folders.some(folder => folder.id === collection && !folder.vault)) return;
+    const videos = videosIn(collection).filter(video => video.watched !== value);
+    if (!videos.length) return;
+    for (const video of videos) video.watched = value;
+    if (value) playSound("complete");
+    persist();
+    render();
+}
+
+$("mark-playlist-watched").addEventListener("click", () => setPlaylistWatched(true));
+$("unmark-playlist-watched").addEventListener("click", () => setPlaylistWatched(false));
 
 function recordPlay(source) {
     const video = ensureVideo(source);

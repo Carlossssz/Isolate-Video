@@ -70,6 +70,8 @@ h1, h2, h3, p { margin: 0; }
 .list-heading h3 { overflow-wrap: anywhere; }
 #add-playlist-video { min-height: 31px; padding: 4px 7px; font-size: 13px; }
 #add-playlist-video .icon { font-size: 18px; }
+.playlist-watch-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.playlist-watch-actions .button { min-height: 31px; padding: 4px 7px; font-size: 13px; }
 .folder-heading { margin-top: 18px; }
 .video-list { container: video-list / inline-size; margin-top: 22px; padding-top: 11px; border-top: 1px solid var(--line); }
 .list-empty { color: var(--muted); font-size: 14px; padding: 7px 8px; }
