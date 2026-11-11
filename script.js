@@ -1228,6 +1228,7 @@ function downloadJson(payload, filename) {
     const link = element("a");
     link.href = url;
     link.download = filename;
+    link.addEventListener("click", event => event.stopPropagation(), { once: true });
     document.body.append(link);
     link.click();
     link.remove();
