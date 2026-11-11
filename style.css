@@ -185,6 +185,7 @@ body { -webkit-user-select: none; user-select: none; }
 .controls-idle { cursor: none; }
 .controls-idle #video-title-tooltip, .controls-idle #library-toggle, .controls-idle .library, .controls-idle #load-form, .controls-idle #status,
 .controls-idle .player-toolbar, .controls-idle #resize-player { visibility: hidden; }
+body:has(#library:not([hidden])) #screen:has(iframe) #wake-player { display: block; }
 .controls-idle #wake-player { display: block; cursor: none; }
 
 @media (max-width: 520px) {

@@ -1472,6 +1472,11 @@ function setLibraryOpen(open, focusControl = false) {
 
 libraryToggle.addEventListener("click", () => setLibraryOpen(library.hidden, true));
 $("library-close").addEventListener("click", () => setLibraryOpen(false, true));
+document.addEventListener("click", event => {
+    if (library.hidden || library.contains(event.target) || libraryToggle.contains(event.target) ||
+        libraryMenu.contains(event.target) || editor.contains(event.target)) return;
+    setLibraryOpen(false);
+});
 library.addEventListener("keydown", event => {
     if (event.key === "Escape") setLibraryOpen(false, true);
 });
