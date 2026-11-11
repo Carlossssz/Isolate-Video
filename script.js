@@ -464,6 +464,12 @@ function setLibraryWidth(width) {
     return next;
 }
 
+function resizeLibrary(width) {
+    const previous = libraryResize.getAttribute("aria-valuenow");
+    preferences.libraryWidth = setLibraryWidth(width);
+    if (String(preferences.libraryWidth) !== previous) playResizeSound("libraryResize");
+}
+
 let libraryDrag;
 libraryResize.addEventListener("pointerdown", event => {
     if (!event.isPrimary || event.button !== 0) return;
@@ -478,7 +484,7 @@ libraryResize.addEventListener("pointerdown", event => {
 
 libraryResize.addEventListener("pointermove", event => {
     if (event.pointerId !== libraryDrag?.pointer) return;
-    preferences.libraryWidth = setLibraryWidth(libraryDrag.width + event.clientX - libraryDrag.x);
+    resizeLibrary(libraryDrag.width + event.clientX - libraryDrag.x);
 });
 
 libraryResize.addEventListener("lostpointercapture", () => {
@@ -493,7 +499,7 @@ libraryResize.addEventListener("keydown", event => {
     const target = { ArrowLeft: width - step, ArrowRight: width + step, Home: 0, End: 660 }[event.key];
     if (target === undefined) return;
     event.preventDefault();
-    preferences.libraryWidth = setLibraryWidth(target);
+    resizeLibrary(target);
     savePreferences();
 });
 window.addEventListener("resize", () => setLibraryWidth(preferences.libraryWidth));
@@ -501,11 +507,22 @@ setLibraryWidth(preferences.libraryWidth);
 
 const soundPatterns = {
     click: [440, 660],
+    screenClick: [520, 390],
+    videoResize: [620, 820],
+    libraryResize: [285, 365],
     confirm: [392, 523, 784],
     close: [440, 330],
     complete: [523, 659, 784, 1047],
 };
 let audioContext;
+const lastResizeSound = new Map();
+
+function playResizeSound(name) {
+    const now = performance.now();
+    if (now - (lastResizeSound.get(name) ?? -Infinity) < 100) return;
+    lastResizeSound.set(name, now);
+    playSound(name);
+}
 
 async function playSound(name) {
     if (!preferences.sound || !window.AudioContext) return;
@@ -539,7 +556,12 @@ retroSounds.addEventListener("change", () => {
 
 document.addEventListener("click", event => {
     const button = event.target.closest("button");
-    if (!button || button.disabled) return;
+    if (event.target.closest("#library-resize")) return;
+    if (!button) {
+        playSound("screenClick");
+        return;
+    }
+    if (button.disabled) return;
     const quiet = ["drag-player", "resize-player", "commit-edit"];
     if (quiet.includes(button.id)) return;
     playSound(["library-close", "cancel-edit", "dock-player"].includes(button.id) ? "close" : "click");
@@ -854,7 +876,13 @@ function setupHandle(handle, resize) {
             const view = viewport();
             const width = clamp(rect.width + dx, Math.min(290, view.width), Math.max(290, view.width - rect.left));
             const height = clamp(rect.height + dy, Math.min(220, view.height), Math.max(220, view.height - rect.top));
+            const previousWidth = parseFloat(shell.style.width) || rect.width;
+            const previousHeight = parseFloat(shell.style.height) || rect.height;
             positionPlayer(rect.left, rect.top, width, height);
+            if (Math.abs(parseFloat(shell.style.width) - previousWidth) >= 1 ||
+                Math.abs(parseFloat(shell.style.height) - previousHeight) >= 1) {
+                playResizeSound("videoResize");
+            }
         } else {
             positionPlayer(rect.left + dx, rect.top + dy, rect.width, rect.height);
         }
