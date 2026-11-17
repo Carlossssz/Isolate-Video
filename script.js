@@ -2355,13 +2355,19 @@ $("pip").addEventListener("click", async () => {
     }
 });
 
-$("fullscreen").addEventListener("click", async () => {
+async function toggleFullscreen(target) {
     try {
         if (document.fullscreenElement) await document.exitFullscreen();
-        else await shell.requestFullscreen();
+        else await target.requestFullscreen();
     } catch {
-        showStatus("O navegador não conseguiu abrir o player em tela cheia.");
+        showStatus("O navegador não conseguiu alternar o modo de tela cheia.");
     }
+}
+
+$("fullscreen").addEventListener("click", () => toggleFullscreen(shell));
+document.addEventListener("dblclick", event => {
+    if (event.defaultPrevented || event.target.closest("#library, #library-menu, #editor, button, input, select, textarea, a, [contenteditable]")) return;
+    toggleFullscreen(document.documentElement);
 });
 
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
