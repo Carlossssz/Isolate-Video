@@ -2077,7 +2077,7 @@ function revealControls() {
     if (!isPlaying) return;
     idleTimer = setTimeout(() => {
         const focused = document.activeElement;
-        if (editor.open || !libraryMenu.hidden || focused === $("video-link") ||
+        if (editor.open || !$("youtube-search").hidden || !libraryMenu.hidden || focused === $("video-link") ||
             (focused instanceof HTMLElement && focused.matches("button:focus-visible, select:focus-visible, input:focus-visible, [role=separator]:focus-visible")) ||
             shell.classList.contains("adjusting") || libraryDrag) return;
         document.body.classList.add("controls-idle");
@@ -2253,6 +2253,7 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
 
 function loadVideo(source) {
     unlockSound().catch(() => {});
+    closeYouTubeSearch();
     setLibraryOpen(false);
     $("video-link").blur();
     dockPlayer();
@@ -2266,15 +2267,136 @@ function loadVideo(source) {
     render();
 }
 
+const youtubeSearchKey = "isolate.youtube-api-key.v1";
+const searchPanel = $("youtube-search");
+const apiKeyInput = $("youtube-api-key");
+let searchController;
+let searchQuery = "";
+let nextSearchPage = "";
+
+try { apiKeyInput.value = localStorage.getItem(youtubeSearchKey) ?? ""; } catch { /* Keep an empty key. */ }
+
+$("save-youtube-key").addEventListener("click", () => {
+    const key = apiKeyInput.value.trim();
+    const status = $("youtube-key-status");
+    try {
+        if (key) localStorage.setItem(youtubeSearchKey, key);
+        else localStorage.removeItem(youtubeSearchKey);
+        status.textContent = key ? "Chave salva neste navegador." : "Chave removida.";
+    } catch {
+        status.textContent = "Não foi possível salvar a chave neste navegador.";
+    }
+    status.hidden = false;
+});
+
+function closeYouTubeSearch() {
+    searchController?.abort();
+    searchPanel.hidden = true;
+    revealControls();
+}
+$("close-search").addEventListener("click", closeYouTubeSearch);
+$("configure-search").addEventListener("click", event => {
+    event.stopPropagation();
+    setLibraryOpen(true);
+    setLibraryTab(true);
+    apiKeyInput.focus();
+});
+$("search-next").addEventListener("click", () => searchYouTube(searchQuery, nextSearchPage));
+
+function decodeYouTubeText(text) {
+    const decoder = document.createElement("textarea");
+    decoder.innerHTML = String(text ?? "");
+    return decoder.value;
+}
+
+function searchVideoCard(item) {
+    const source = parseSource(item.id?.videoId ?? "");
+    if (!source || source.type !== "youtube") return null;
+    source.title = decodeYouTubeText(item.snippet?.title);
+    const card = element("article", "search-card");
+    const preview = element("img");
+    preview.src = "https://i.ytimg.com/vi/" + encodeURIComponent(source.id) + "/mqdefault.jpg";
+    preview.alt = "";
+    preview.loading = "lazy";
+    preview.draggable = false;
+    const title = element("h3", "", source.title);
+    const channel = element("p", "", decodeYouTubeText(item.snippet?.channelTitle));
+    const actions = element("div", "search-card-actions");
+    const play = element("button", "button primary", "Assistir");
+    play.type = "button";
+    play.addEventListener("click", () => loadVideo(source));
+    const save = element("button", "button secondary", "Salvar na playlist");
+    save.type = "button";
+    save.addEventListener("click", () => editVideo(source));
+    actions.append(play, save);
+    card.append(preview, title, channel, actions);
+    return card;
+}
+
+async function searchYouTube(query, pageToken = "") {
+    searchController?.abort();
+    const controller = new AbortController();
+    searchController = controller;
+    const key = apiKeyInput.value.trim();
+    searchPanel.hidden = false;
+    $("configure-search").hidden = Boolean(key);
+    $("search-next").hidden = true;
+    if (!pageToken) {
+        searchQuery = query;
+        nextSearchPage = "";
+        $("search-results").replaceChildren();
+    }
+    revealControls();
+    if (!key) {
+        $("search-status").textContent = "Configure sua chave da YouTube Data API para pesquisar dentro do Isolate.";
+        return;
+    }
+    $("search-status").textContent = "Buscando no YouTube…";
+    try {
+        const url = new URL("https://www.googleapis.com/youtube/v3/search");
+        url.search = new URLSearchParams({
+            key, part: "snippet", type: "video", videoEmbeddable: "true",
+            q: query, maxResults: "12", ...(pageToken ? { pageToken } : {}),
+        });
+        const response = await fetch(url, { signal: controller.signal });
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        if (!response.ok) {
+            const reasons = data.error?.errors?.map(error => error.reason) ?? [];
+            const quota = reasons.some(reason => /quota|dailyLimit|rateLimit/i.test(reason));
+            $("search-status").textContent = quota ?
+                "A cota de buscas desta chave foi atingida. Tente novamente quando ela renovar." :
+                "A busca não foi autorizada. Verifique a chave, a ativação da YouTube Data API v3 e as restrições no Google Cloud.";
+            $("configure-search").hidden = quota;
+            return;
+        }
+        const cards = (data.items ?? []).map(searchVideoCard).filter(Boolean);
+        $("search-results").append(...cards);
+        nextSearchPage = data.nextPageToken ?? "";
+        $("search-next").hidden = !nextSearchPage;
+        $("search-status").textContent = $("search-results").children.length ? "" : "Nenhum vídeo encontrado.";
+    } catch (error) {
+        if (error.name !== "AbortError") $("search-status").textContent = "Não foi possível buscar. Verifique sua conexão e tente novamente.";
+    } finally {
+        if (!controller.signal.aborted && nextSearchPage) $("search-next").hidden = false;
+    }
+}
+
 $("load-form").addEventListener("submit", event => {
     event.preventDefault();
-    const source = parseSource($("video-link").value);
-    if (!source) {
-        showStatus("Cole um link válido ou um ID do YouTube com 11 caracteres.");
+    const input = $("video-link").value.trim();
+    const source = parseSource(input);
+    if (source) {
+        loadVideo(source);
+        return;
+    }
+    if (!input || /^(?:https?:\/\/|(?:www\.)?(?:youtube\.com|youtu\.be)\/)/i.test(input)) {
+        showStatus("Cole um link válido ou digite o que deseja pesquisar.");
         $("video-link").focus();
         return;
     }
-    loadVideo(source);
+    showStatus();
+    searchYouTube(input);
 });
 $("save-video").addEventListener("click", () => editVideo(current));
 $("watch-video").addEventListener("click", () => setWatched(current, !findVideo(current.key)?.watched));

@@ -231,3 +231,22 @@ body:has(#library:not([hidden])) #screen:has(iframe) #wake-player { display: blo
 @container video-list (width < 378px) {
     .entry, .entry-preview, .entry-delete { max-width: none; }
 }
+
+.api-key-field { display: grid; gap: 6px; }
+.api-key-field input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--background); color: var(--page-text); }
+.settings-help, #youtube-key-status { font-size: 13px; color: var(--muted); }
+#settings a { color: var(--panel-accent-text); overflow-wrap: anywhere; }
+#youtube-search { position: fixed; z-index: 6; top: 76px; left: 50%; transform: translateX(-50%); width: min(1060px, calc(100vw - 24px)); max-height: calc(100dvh - 90px); overflow-y: auto; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); box-shadow: 0 14px 40px #0007; scrollbar-width: thin; scrollbar-color: var(--accent) var(--panel); }
+.search-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.search-heading h2 { font-size: 20px; }
+#search-status { color: var(--muted); }
+#search-status:not(:empty), #configure-search { margin-bottom: 12px; }
+#search-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 12px; }
+.search-card { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--surface-text); }
+.search-card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 5px; }
+.search-card h3 { margin-top: 8px; font-size: 16px; overflow-wrap: anywhere; }
+.search-card p { margin: 5px 0 10px; font-size: 14px; color: var(--surface-muted); }
+.search-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.search-card-actions .button { font-size: 13px; }
+#search-next { margin-top: 14px; }
+#youtube-api-key { -webkit-user-select: text; user-select: text; }
