@@ -205,8 +205,7 @@ body { -webkit-user-select: none; user-select: none; }
 .controls-idle { cursor: none; }
 .controls-idle #video-title-tooltip, .controls-idle #library-toggle, .controls-idle .library, .controls-idle #load-form, .controls-idle #status,
 .controls-idle #resize-player { visibility: hidden; }
-.controls-idle .player-toolbar { display: none; }
-.focus-player.controls-idle .workspace { width: min(100%, 1340px, calc(100dvh * 16 / 9)); }
+.controls-idle .player-toolbar { opacity: 0; pointer-events: none; }
 body:has(#library:not([hidden])) #screen:has(iframe) #wake-player { display: block; }
 .controls-idle #wake-player { display: block; cursor: none; }
 
