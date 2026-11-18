@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
     <link rel="stylesheet" href="style.css?v=youtube-search">
-    <script src="script.js?v=youtube-search" defer></script>
+    <script src="script.js?v=shared-youtube-search" defer></script>
 </head>
 <body>
     <button id="library-toggle" class="icon-button" type="button" title="Abrir menu" aria-label="Abrir menu" aria-controls="library" aria-expanded="false"><span class="icon" aria-hidden="true">menu</span></button>
@@ -77,11 +77,11 @@
                 </label>
                 <section class="settings-section" aria-labelledby="search-settings-title">
                     <h3 id="search-settings-title">Busca do YouTube</h3>
-                    <label class="api-key-field" for="youtube-api-key">Chave da YouTube Data API
+                    <label class="api-key-field" for="youtube-api-key">Chave pessoal da YouTube Data API (opcional)
                         <input id="youtube-api-key" type="password" autocomplete="off" spellcheck="false">
                     </label>
                     <button id="save-youtube-key" class="button secondary" type="button">Salvar chave</button>
-                    <p class="settings-help">Restrinja a chave à YouTube Data API v3 e a https://carlossssz.github.io/* no Google Cloud. Ela fica salva neste navegador.</p>
+                    <p class="settings-help">A busca usa a chave padrão do Isolate e compartilha sua cota diária. Para usar sua própria cota, salve uma chave pessoal restrita à YouTube Data API v3 e a https://carlossssz.github.io/*.</p>
                     <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Configurar chave no Google Cloud</a>
                     <p id="youtube-key-status" role="status" hidden></p>
                 </section>

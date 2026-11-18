@@ -2267,6 +2267,7 @@ function loadVideo(source) {
     render();
 }
 
+const defaultYouTubeApiKey = "AIzaSyAdol4z4e0ZLZE4xJEIhCb1IDKmB0n2YR4";
 const youtubeSearchKey = "isolate.youtube-api-key.v1";
 const searchPanel = $("youtube-search");
 const apiKeyInput = $("youtube-api-key");
@@ -2282,7 +2283,7 @@ $("save-youtube-key").addEventListener("click", () => {
     try {
         if (key) localStorage.setItem(youtubeSearchKey, key);
         else localStorage.removeItem(youtubeSearchKey);
-        status.textContent = key ? "Chave salva neste navegador." : "Chave removida.";
+        status.textContent = key ? "Chave pessoal salva neste navegador." : "Usando a chave padrão do Isolate.";
     } catch {
         status.textContent = "Não foi possível salvar a chave neste navegador.";
     }
@@ -2337,7 +2338,7 @@ async function searchYouTube(query, pageToken = "") {
     searchController?.abort();
     const controller = new AbortController();
     searchController = controller;
-    const key = apiKeyInput.value.trim();
+    const key = apiKeyInput.value.trim() || defaultYouTubeApiKey;
     searchPanel.hidden = false;
     $("configure-search").hidden = Boolean(key);
     $("search-next").hidden = true;
