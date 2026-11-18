@@ -250,3 +250,15 @@ body:has(#library:not([hidden])) #screen:has(iframe) #wake-player { display: blo
 .search-card-actions .button { font-size: 13px; }
 #search-next { margin-top: 14px; }
 #youtube-api-key { -webkit-user-select: text; user-select: text; }
+.player-toolbar { flex-wrap: wrap; }
+.playback-controls { display: flex; flex: 1 0 100%; align-items: center; gap: 7px; min-width: 0; padding: 0 3px 3px; }
+.volume-control { display: flex; flex: 0 1 110px; min-width: 40px; }
+#player-volume { width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
+#player-volume-value { min-width: 36px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--surface-muted); }
+.speed-control { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; color: var(--surface-text); }
+#player-speed { max-width: 76px; padding: 4px; border: 1px solid var(--line); border-radius: 5px; color: var(--surface-text); background: var(--surface); }
+@media (max-width: 410px) {
+    .speed-control { font-size: 12px; gap: 3px; }
+    .volume-control { flex-basis: 65px; }
+    .playback-controls { gap: 4px; }
+}

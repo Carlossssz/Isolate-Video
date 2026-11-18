@@ -2063,7 +2063,7 @@ document.addEventListener("click", event => {
         return;
     }
     if (button.disabled) return;
-    const quiet = ["drag-player", "resize-player", "commit-edit", "delete-item"];
+    const quiet = ["player-mute", "drag-player", "resize-player", "commit-edit", "delete-item"];
     if (quiet.includes(button.id)) return;
     playSound(["library-close", "cancel-edit", "dock-player"].includes(button.id) ? "close" : "click");
 });
@@ -2135,6 +2135,7 @@ function stopPlayback() {
     if (!playback) return;
     const previous = playback;
     playback = null;
+    syncPlaybackControls();
     previous.controller?.destroy();
     previous.node?.pause?.();
     previous.node?.remove();
@@ -2166,6 +2167,81 @@ function markEnded(active) {
     playSound("playbackVictory");
 }
 
+let videoVolume = 100;
+let videoMuted = false;
+
+function syncPlaybackControls() {
+    const active = playback;
+    const ready = Boolean(active && (active.source.type === "direct" || active.ready));
+    for (const id of ["player-volume", "player-mute", "player-speed"]) $(id).disabled = !ready;
+    if (!ready) return;
+    let rates;
+    let rate;
+    if (active.source.type === "direct") {
+        videoVolume = Math.round(active.node.volume * 100);
+        videoMuted = active.node.muted;
+        rate = active.node.playbackRate;
+        rates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+    } else {
+        videoVolume = Math.round(active.controller.getVolume());
+        videoMuted = active.controller.isMuted();
+        rate = active.controller.getPlaybackRate();
+        rates = active.controller.getAvailablePlaybackRates();
+    }
+    if (!rates.includes(rate)) rates = [...rates, rate].sort((a, b) => a - b);
+    const speed = $("player-speed");
+    if ([...speed.options].map(option => Number(option.value)).join() !== rates.join()) {
+        speed.replaceChildren(...rates.map(value => new Option(String(value).replace(".", ",") + "×", String(value))));
+    }
+    speed.value = String(rate);
+    $("player-volume").value = String(videoVolume);
+    $("player-volume-value").textContent = (videoMuted ? 0 : videoVolume) + "%";
+    const mute = $("player-mute");
+    const silent = videoMuted || !videoVolume;
+    mute.firstElementChild.textContent = silent ? "volume_off" : "volume_up";
+    mute.setAttribute("aria-pressed", String(videoMuted));
+    mute.setAttribute("aria-label", silent ? "Ativar som do vídeo" : "Silenciar vídeo");
+    mute.title = mute.getAttribute("aria-label");
+}
+
+function applyVideoVolume() {
+    const active = playback;
+    if (!active) return;
+    if (active.source.type === "direct") {
+        active.node.volume = videoVolume / 100;
+        active.node.muted = videoMuted;
+    } else if (active.ready) {
+        active.controller.setVolume(videoVolume);
+        if (videoMuted) active.controller.mute();
+        else active.controller.unMute();
+    }
+    syncPlaybackControls();
+}
+
+$("player-volume").addEventListener("input", event => {
+    videoVolume = Number(event.target.value);
+    videoMuted = false;
+    applyVideoVolume();
+});
+$("player-mute").addEventListener("click", () => {
+    videoMuted = !(videoMuted || !videoVolume);
+    if (!videoMuted && !videoVolume) videoVolume = 50;
+    applyVideoVolume();
+});
+$("player-speed").addEventListener("change", event => {
+    const active = playback;
+    if (!active) return;
+    const rate = Number(event.target.value);
+    active.rate = rate;
+    if (active.source.type === "direct") active.node.playbackRate = rate;
+    else if (active.ready) active.controller.setPlaybackRate(rate);
+    syncPlaybackControls();
+});
+// The YouTube API has no volume-change event for its embedded controls.
+setInterval(() => {
+    if (playback?.ready && playback.source.type === "youtube") syncPlaybackControls();
+}, 500);
+
 async function mountPlayback(source, host, position = 0, autoplay = true, recorded = false, rate = preferences.rate, continuing = false) {
     stopPlayback();
     const active = { source, host, recorded, position, autoplay, rate, phase: continuing ? "playing" : "pending" };
@@ -2180,6 +2256,10 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
         video.draggable = false;
         video.defaultPlaybackRate = rate;
         video.playbackRate = rate;
+        video.volume = videoVolume / 100;
+        video.muted = videoMuted;
+        video.addEventListener("volumechange", () => { if (playback === active) syncPlaybackControls(); });
+        video.addEventListener("ratechange", () => { if (playback === active) syncPlaybackControls(); });
         video.autoplay = autoplay;
         video.src = source.url;
         video.addEventListener("loadedmetadata", () => {
@@ -2193,6 +2273,7 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
         video.addEventListener("error", () => mediaError(
             "Não foi possível reproduzir. Use um link direto para um arquivo de vídeo compatível.", active));
         host.append(video);
+        syncPlaybackControls();
         return;
     }
 
@@ -2225,8 +2306,10 @@ async function mountPlayback(source, host, position = 0, autoplay = true, record
                     if (playback !== active) return;
                     active.ready = true;
                     event.target.setPlaybackRate(rate);
+                    applyVideoVolume();
                     if (autoplay) event.target.playVideo();
                 },
+                onPlaybackRateChange() { if (playback === active) syncPlaybackControls(); },
                 onAutoplayBlocked() {
                     if (playback === active) showStatus(host === media ?
                         "Clique em Reproduzir no vídeo para iniciar." :
