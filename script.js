@@ -2487,7 +2487,7 @@ async function toggleFullscreen(target) {
     }
 }
 
-$("fullscreen").addEventListener("click", () => toggleFullscreen(shell));
+$("fullscreen").addEventListener("click", () => toggleFullscreen(document.documentElement));
 document.addEventListener("dblclick", event => {
     if (event.defaultPrevented || event.target.closest("#library, #library-menu, #editor, button, input, select, textarea, a, [contenteditable]")) return;
     toggleFullscreen(document.documentElement);
@@ -2533,7 +2533,7 @@ function setupHandle(handle, resize) {
 
     let drag;
     handle.addEventListener("pointerdown", event => {
-        if (!event.isPrimary || event.button !== 0 || document.fullscreenElement) return;
+        if (!event.isPrimary || event.button !== 0 || document.fullscreenElement === shell) return;
         drag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, rect: shell.getBoundingClientRect() };
         handle.setPointerCapture(event.pointerId);
         shell.classList.add("adjusting");
@@ -2548,7 +2548,7 @@ function setupHandle(handle, resize) {
     });
     handle.addEventListener("keydown", event => {
         const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-        if (!directions[event.key] || document.fullscreenElement) return;
+        if (!directions[event.key] || document.fullscreenElement === shell) return;
         event.preventDefault();
         const [x, y] = directions[event.key];
         const step = event.shiftKey ? 40 : 12;
@@ -2563,7 +2563,7 @@ $("dock-player").addEventListener("click", () => {
     $("drag-player").focus();
 });
 window.addEventListener("resize", () => {
-    if (!shell.classList.contains("floating") || document.fullscreenElement) return;
+    if (!shell.classList.contains("floating") || document.fullscreenElement === shell) return;
     const rect = shell.getBoundingClientRect();
     positionPlayer(rect.left, rect.top, rect.width, rect.height);
 });
